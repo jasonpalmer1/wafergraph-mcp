@@ -1,0 +1,22 @@
+{
+  "name": "wafergraph-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Remote MCP server exposing the wafergraph.com semiconductor supply-chain dataset (companies, segments, supply-chain graph, M&A deals) as read-only tools for AI agents.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "agents": "^0.17.4",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "wrangler": "^4.100.0"
+  }
+}

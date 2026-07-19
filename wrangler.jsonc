@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wafergraph-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "WAFERGRAPH_MCP", "class_name": "WafergraphMCP" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["WafergraphMCP"] }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
