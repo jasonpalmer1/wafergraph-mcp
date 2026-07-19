@@ -1,0 +1,335 @@
+{
+ "segments": [
+  {
+   "id": "materials",
+   "name": "Materials",
+   "order": 1,
+   "blurb": "Materials are the physical feedstocks — silicon wafers, photoresists, specialty gases, substrates, and chemicals — that every fabrication process consumes. Without ultra-pure materials meeting atomic-level tolerances, even the most advanced equipment cannot produce working chips. The segment is characterized by highly concentrated supply: Japan holds dominant positions in silicon wafers (Shin-Etsu leads; Sumco is a major supplier), photoresists (JSR, TOK, Shin-Etsu), and photomask blanks (HOYA), while the US and Germany hold key positions in specialty gases and CMP consumables.",
+   "subsegments": [
+    {
+     "id": "silicon_wafers",
+     "name": "Silicon Wafers"
+    },
+    {
+     "id": "photoresists_chemicals",
+     "name": "Photoresists & Chemicals"
+    },
+    {
+     "id": "specialty_gases",
+     "name": "Specialty Gases"
+    },
+    {
+     "id": "substrates",
+     "name": "Substrates"
+    },
+    {
+     "id": "sputtering_targets",
+     "name": "Sputtering Targets"
+    },
+    {
+     "id": "cmp_slurries",
+     "name": "CMP Slurries"
+    },
+    {
+     "id": "photomasks",
+     "name": "Photomasks & Mask Blanks"
+    },
+    {
+     "id": "packaging_materials",
+     "name": "Packaging Materials (Leadframes, Bonding Wire)"
+    }
+   ]
+  },
+  {
+   "id": "equipment_front_end",
+   "name": "Equipment (Front End)",
+   "order": 2,
+   "blurb": "Front-end equipment transforms raw wafers into patterned circuits through deposition, etch, lithography, ion implant, and cleaning steps. The segment contains some of the supply chain's most extreme chokepoints: ASML is the sole supplier of EUV scanners, Carl Zeiss SMT makes every optical column inside them, and TRUMPF supplies the laser sources. Beyond those monopolies, Applied Materials, Lam Research, Tokyo Electron, and KLA collectively cover most other critical process steps and together represent several hundred billion dollars in market value.",
+   "subsegments": [
+    {
+     "id": "lithography",
+     "name": "Lithography"
+    },
+    {
+     "id": "deposition",
+     "name": "Deposition"
+    },
+    {
+     "id": "etch",
+     "name": "Etch"
+    },
+    {
+     "id": "ion_implant",
+     "name": "Ion Implant"
+    },
+    {
+     "id": "metrology_inspection",
+     "name": "Metrology & Inspection"
+    },
+    {
+     "id": "cleaning",
+     "name": "Cleaning"
+    },
+    {
+     "id": "cmp_planarization",
+     "name": "CMP & Planarization"
+    },
+    {
+     "id": "subsystems_components",
+     "name": "Subsystems & Components"
+    }
+   ]
+  },
+  {
+   "id": "equipment_back_end",
+   "name": "Equipment (Back End)",
+   "order": 3,
+   "blurb": "Back-end equipment handles everything after front-end processing — testing finished wafers and individual dies, dicing, assembly, and final packaging. Automated test equipment (ATE) is led by Advantest and Teradyne, whose testers qualify every high-bandwidth memory stack and AI accelerator. Probe cards (FormFactor, Technoprobe), dicing and grinding (DISCO), and advanced assembly tools (BESI, ASMPT) round out a segment whose importance has grown sharply as advanced packaging becomes a primary performance lever.",
+   "subsegments": [
+    {
+     "id": "test_equipment",
+     "name": "Test Equipment"
+    },
+    {
+     "id": "assembly_packaging_equipment",
+     "name": "Assembly & Packaging Equipment"
+    },
+    {
+     "id": "bonders",
+     "name": "Bonders"
+    },
+    {
+     "id": "probe_cards",
+     "name": "Probe Cards"
+    }
+   ]
+  },
+  {
+   "id": "eda_ip",
+   "name": "EDA & IP",
+   "order": 4,
+   "blurb": "Electronic design automation (EDA) software and semiconductor IP are the invisible foundations of every chip. Without EDA tools, modern billion-transistor designs could not be verified or manufactured; without licensed IP cores, most chips would take years longer to develop. Synopsys and Cadence hold an effective duopoly in EDA, while Arm licenses the CPU architecture running in virtually every smartphone on earth — making EDA & IP a small-revenue but existentially critical layer of the supply chain.",
+   "subsegments": [
+    {
+     "id": "eda_software",
+     "name": "EDA Software"
+    },
+    {
+     "id": "ip_licensing",
+     "name": "Semiconductor IP Licensing"
+    }
+   ]
+  },
+  {
+   "id": "design_fabless",
+   "name": "Design (Fabless)",
+   "order": 5,
+   "blurb": "Fabless semiconductor companies design chips entirely without owning manufacturing capacity, contracting production to foundries and OSATs. The model concentrates design innovation while outsourcing capital-intensive fabrication. NVIDIA leads AI accelerators and ranks among the highest-valued semiconductor companies; Broadcom leads networking silicon and hyperscaler custom AI chips; Qualcomm leads mobile SoCs and modems; MediaTek is a leading supplier of consumer SoCs. The segment also includes emerging Chinese designers such as Hygon (CPUs/accelerators) and Loongson (LoongArch CPUs).",
+   "subsegments": [
+    {
+     "id": "gpu_ai_accelerators",
+     "name": "GPU & AI Accelerators"
+    },
+    {
+     "id": "cpu",
+     "name": "CPU"
+    },
+    {
+     "id": "mobile_soc",
+     "name": "Mobile SoC"
+    },
+    {
+     "id": "networking_silicon",
+     "name": "Networking Silicon"
+    },
+    {
+     "id": "fpga",
+     "name": "FPGA"
+    },
+    {
+     "id": "custom_silicon",
+     "name": "Custom Silicon Designers"
+    },
+    {
+     "id": "display_ics",
+     "name": "Display ICs"
+    },
+    {
+     "id": "edge_iot_soc",
+     "name": "Edge & IoT SoC"
+    }
+   ]
+  },
+  {
+   "id": "idm",
+   "name": "IDM",
+   "order": 6,
+   "blurb": "Integrated device manufacturers design, fabricate, and sell chips under one roof — the traditional vertically integrated model. IDMs trade manufacturing flexibility for process control and captive capacity, which is a strategic advantage in analog, power, and image sensing where proprietary process nodes differentiate products. Texas Instruments and Analog Devices lead analog; Sony leads in CMOS image sensors; Infineon leads power semiconductors; Samsung participates here as both the world's largest memory IDM and a logic foundry.",
+   "subsegments": [
+    {
+     "id": "idm",
+     "name": "Integrated Device Manufacturer"
+    }
+   ]
+  },
+  {
+   "id": "foundry",
+   "name": "Foundry",
+   "order": 7,
+   "blurb": "Pure-play foundries manufacture chips designed by others, enabling the fabless model. TSMC is the world's leading logic foundry — it manufactures the most advanced nodes and produces chips for most of the largest fabless companies, making it arguably the single most strategically important company in the supply chain. Samsung also offers foundry services and is a key alternative for leading-edge logic. Specialized foundries such as Win Semiconductors (GaAs RF), GlobalFoundries, UMC, and SMIC serve the much larger market for mainstream and specialty nodes.",
+   "subsegments": [
+    {
+     "id": "pure_play",
+     "name": "Pure-Play Foundry"
+    },
+    {
+     "id": "foundry_services",
+     "name": "Foundry Services"
+    }
+   ]
+  },
+  {
+   "id": "memory",
+   "name": "Memory",
+   "order": 8,
+   "blurb": "Memory chips — DRAM, NAND flash, and the emerging high-bandwidth memory (HBM) used in AI accelerators — are the highest-volume semiconductor category by revenue. The segment is an oligopoly: Samsung, SK hynix, and Micron make almost all DRAM; Samsung, SK hynix, Kioxia, and SanDisk dominate NAND. HBM is the current growth flashpoint, with SK hynix supplying the majority of HBM to NVIDIA. Memory is also highly cyclical, with pricing swings that affect the broader supply chain's financial health.",
+   "subsegments": [
+    {
+     "id": "dram",
+     "name": "DRAM"
+    },
+    {
+     "id": "nand",
+     "name": "NAND"
+    },
+    {
+     "id": "hbm",
+     "name": "HBM"
+    },
+    {
+     "id": "emerging_memory",
+     "name": "Emerging Memory"
+    },
+    {
+     "id": "specialty_memory",
+     "name": "Specialty & NOR Flash"
+    },
+    {
+     "id": "controllers",
+     "name": "Storage Controllers"
+    },
+    {
+     "id": "modules",
+     "name": "Memory Modules & Storage"
+    }
+   ]
+  },
+  {
+   "id": "analog_power_rf",
+   "name": "Analog, Power, RF",
+   "order": 9,
+   "blurb": "Analog, power, and RF chips interface between the physical and digital worlds — converting signals, managing power delivery, and handling wireless communication. Unlike logic chips, many analog designs remain valuable on older process nodes, giving established players long product cycles. Texas Instruments leads general-purpose analog; Infineon leads power semiconductors (including SiC for EVs); Murata and TDK lead in RF components and passive electronics; Sony leads in CMOS image sensors. The SiC and GaN power segments are growing rapidly with electric-vehicle and AI-server demand.",
+   "subsegments": [
+    {
+     "id": "analog_mixed_signal",
+     "name": "Analog & Mixed Signal"
+    },
+    {
+     "id": "power",
+     "name": "Power Semiconductors (incl. SiC, GaN)"
+    },
+    {
+     "id": "rf",
+     "name": "RF"
+    },
+    {
+     "id": "passives",
+     "name": "Passive Components (MLCC, resistors, inductors)"
+    }
+   ]
+  },
+  {
+   "id": "osat",
+   "name": "OSAT",
+   "order": 10,
+   "blurb": "Outsourced semiconductor assembly and test (OSAT) companies package finished dies into the chips and modules that go into end products. As advanced packaging — chiplets, CoWoS, HBM stacking, and fan-out technologies — moves from niche to mainstream, OSATs have become strategic partners rather than commodity handlers. ASE Technology (which includes SPIL) is the world's largest OSAT; Amkor is a major player in advanced packaging in the Americas and Korea. TSMC and Samsung also offer advanced packaging in-house, competing directly with OSATs at the leading edge.",
+   "subsegments": [
+    {
+     "id": "assembly_test",
+     "name": "Outsourced Assembly & Test"
+    },
+    {
+     "id": "advanced_packaging",
+     "name": "Advanced Packaging Services"
+    }
+   ]
+  },
+  {
+   "id": "distribution_misc",
+   "name": "Distribution & Misc",
+   "order": 11,
+   "blurb": "This segment captures the physical distribution layer — component distributors, electronics manufacturing services (EMS) and ODM companies that build finished AI servers and systems, and photonics companies making optical transceivers. Foxconn (Hon Hai) is the world's largest EMS/contract manufacturer. Quanta, Wistron, and Wiwynn are top hyperscaler AI-server ODMs. InnoLight and Eoptolink supply the high-speed optical transceivers that interconnect AI clusters. WPG Holdings and WT Microelectronics are leading component distributors by revenue.",
+   "subsegments": [
+    {
+     "id": "distributors",
+     "name": "Distributors"
+    },
+    {
+     "id": "design_services",
+     "name": "Design Services"
+    },
+    {
+     "id": "photonics_optics",
+     "name": "Photonics & Optics"
+    },
+    {
+     "id": "systems_odm",
+     "name": "Systems & ODM (AI servers)"
+    }
+   ]
+  },
+  {
+   "id": "ai_datacenter",
+   "name": "AI & Data Center",
+   "order": 12,
+   "blurb": "The AI and data-center segment captures the demand side of the semiconductor supply chain — the hyperscalers, GPU clouds, AI labs, data-center REITs, and infrastructure suppliers that consume chips at massive scale. GPU demand from AI workloads is the primary demand signal driving the entire supply chain. Hyperscalers (AWS, Microsoft Azure, Google Cloud, Meta, Alibaba, Tencent) are simultaneously the largest GPU buyers and increasingly designing their own custom silicon. Equinix and Digital Realty provide the real estate; Vertiv, Schneider Electric, and Delta Electronics supply power and cooling; Arista Networks leads AI back-end switching.",
+   "subsegments": [
+    {
+     "id": "neocloud",
+     "name": "GPU Clouds (Neoclouds)"
+    },
+    {
+     "id": "hyperscaler",
+     "name": "Hyperscalers"
+    },
+    {
+     "id": "ai_lab",
+     "name": "AI Labs / Model Builders"
+    },
+    {
+     "id": "data_center_reit",
+     "name": "Data Center REITs"
+    },
+    {
+     "id": "colocation",
+     "name": "Data Center Operators (Colo)"
+    },
+    {
+     "id": "power_thermal",
+     "name": "Power & Cooling"
+    },
+    {
+     "id": "networking_systems",
+     "name": "Networking & Systems"
+    }
+   ]
+  }
+ ],
+ "market_positions": [
+  "monopoly",
+  "leader",
+  "major",
+  "challenger",
+  "niche"
+ ]
+}
