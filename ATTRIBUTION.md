@@ -25,9 +25,8 @@ text.
 - Every tool response carries an `attribution` block (compiled_by, sources, note, and — for
   single-company responses — a `company_url` deep link to the full sourced profile on
   wafergraph.com) and a `links` block pointing back to wafergraph.com and its paid report.
-- `key_products` is deliberately withheld (see README "Field discipline") because that field's
-  upstream data has a known bulk-drafting/fabrication-history problem — this is a trust
-  decision, not a licensing one.
+- `key_products` was withheld until 2026-07-19 pending a verified upstream deep-fill (a trust
+  decision, not a licensing one — see README "Field discipline"); it is now included.
 - The vendored `data/taxonomy.snapshot.json` is a direct copy of wafergraph's own
   `data/taxonomy.json` (same sourcing/terms as above); see CLAUDE.md for why it's vendored
   instead of live-fetched.

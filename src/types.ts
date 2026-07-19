@@ -16,10 +16,10 @@ export interface Company {
   country: string;
   segments: CompanySegment[];
   one_liner: string;
-  // key_products is present in the raw upstream data but deliberately NOT
-  // exposed by this server — see field-discipline note in CLAUDE.md /
-  // README.md. Re-enable a mapped field here once the verified deep-fill
-  // lands upstream (tracked in wafergraph's own CLAUDE.md).
+  // key_products: re-enabled 2026-07-19 — the upstream deep-fill landed
+  // (verified live: 564/565 companies filled, only sk_enpulse empty because
+  // it's defunct/absorbed into SKC as of 2025-12-23). See field-discipline
+  // note in CLAUDE.md / README.md for the history.
   key_products?: string[];
   key_customers: string[];
   key_suppliers: string[];
@@ -69,8 +69,9 @@ export interface Deal {
 }
 
 // Fields allowed out of this server for a company record (trust/field
-// discipline rule — see README.md "Field discipline"). key_products is
-// intentionally absent.
+// discipline rule — see README.md "Field discipline"). Still a whitelist,
+// not a blacklist, so anything added upstream later stays excluded by
+// default until deliberately added here. key_products re-added 2026-07-19.
 export interface AllowedCompany {
   id: string;
   name: string;
@@ -80,6 +81,7 @@ export interface AllowedCompany {
   country: string;
   segments: CompanySegment[];
   one_liner: string;
+  key_products?: string[];
   market_position: Company["market_position"];
   market_cap_usd_b: number | null;
   market_cap_updated: string | null;
@@ -89,7 +91,7 @@ export interface AllowedCompany {
 
 export function toAllowedCompany(c: Company): AllowedCompany {
   // Deliberately whitelist fields rather than blacklist — this is the one
-  // place key_products (and anything added upstream later) gets dropped.
+  // place a field gets dropped/added for every response.
   return {
     id: c.id,
     name: c.name,
@@ -99,6 +101,7 @@ export function toAllowedCompany(c: Company): AllowedCompany {
     country: c.country,
     segments: c.segments,
     one_liner: c.one_liner,
+    key_products: c.key_products,
     market_position: c.market_position,
     market_cap_usd_b: c.market_cap_usd_b,
     market_cap_updated: c.market_cap_updated,

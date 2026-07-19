@@ -101,7 +101,8 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         title: "Get company",
         description:
           "Full allowed profile for one company (by id or exact name) plus its supplier/customer supply-chain edges. " +
-          "Fields are deliberately limited to established/trust-checked data — key_products is excluded (see README field-discipline note).",
+          "Includes key_products (short list of named products/lines). Fields are deliberately limited to " +
+          "established/trust-checked data (see README field-discipline note).",
         inputSchema: {
           id: z.string().describe("Company id, snake_case (e.g. 'tsmc', 'asml') or exact company name."),
         },

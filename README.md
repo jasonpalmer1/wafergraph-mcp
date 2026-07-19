@@ -26,13 +26,14 @@ Every response includes:
 
 ### Field discipline
 
-Company records intentionally exclude `key_products`. That field in wafergraph's own dataset
-was bulk-drafted and has a known fabrication/mis-scope history that hasn't finished a verified
-re-fill pass (tracked in the wafergraph repo's own `CLAUDE.md`). Every other field shipped here
-(`name`, `ticker`, `market_cap_usd_b`, `segments`, `one_liner`, `market_position`,
-`key_customers`/`key_suppliers` graph edges, deals) is the established, trust-checked data. The
-exclusion point is marked with a code comment in `src/types.ts` (`toAllowedCompany`) — re-enable
-once wafergraph ships the verified deep-fill.
+Company records include `key_products` as of 2026-07-19. That field in wafergraph's own dataset
+was originally bulk-drafted with a known fabrication/mis-scope history and was withheld here
+until a verified deep-fill landed upstream; it now has (confirmed live) 564/565 companies filled,
+with only `sk_enpulse` empty (defunct, absorbed into SKC 2025-12-23). Every field shipped here —
+`name`, `ticker`, `market_cap_usd_b`, `segments`, `one_liner`, `market_position`, `key_products`,
+`key_customers`/`key_suppliers` graph edges, deals — is established, trust-checked data. Fields
+are still whitelisted (not blacklisted) in `src/types.ts` (`toAllowedCompany`), so anything added
+upstream later stays excluded by default until deliberately added.
 
 ## Install
 

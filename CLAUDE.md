@@ -67,12 +67,13 @@ Auth: Jason's `wrangler` OAuth session (persists across projects on this machine
   `scripts/refresh-data.sh` to re-sync it. `src/data.ts`'s `fetchJSON()` also now throws loudly
   on any non-JSON content-type, so a repeat of this upstream-shape surprise fails fast instead
   of silently serving HTML as data.
-- **Field discipline:** `key_products` is excluded from every response (`toAllowedCompany()` in
-  `src/types.ts` is a whitelist, not a blacklist, specifically so this stays excluded by
-  construction). Per wafergraph's own `CLAUDE.md`: that field was bulk-drafted with a known
-  fabrication/mis-scope rate and a verified deep-fill is still in progress there. Re-enable by
-  adding `key_products` back to `AllowedCompany`/`toAllowedCompany()` once that lands — don't do
-  it before, and don't re-derive/guess values here in the meantime.
+- **Field discipline:** `key_products` was excluded from every response from launch until
+  **2026-07-19**, when it was re-enabled (`AllowedCompany`/`toAllowedCompany()` in
+  `src/types.ts`) after verifying live against `https://wafergraph.com/data/companies.json` that
+  the upstream deep-fill landed: 564/565 companies filled, only `sk_enpulse` empty (defunct,
+  absorbed into SKC 2025-12-23, confirmed not a bug). `toAllowedCompany()` remains a whitelist,
+  not a blacklist, so any *future* upstream field stays excluded by default until deliberately
+  added — same discipline, just no longer applied to this one field.
 - **Dependency security note:** the initial `npm install` (agents@0.2.10, @modelcontextprotocol/sdk@^1.15) resolved to versions with 2 high-severity advisories in the SDK copy nested inside `agents` (cross-client data leak via shared transport reuse, DNS rebinding not on by default, a ReDoS) — real risk for a public remote server. Upgraded to `agents@^0.17.4` (which pulls a patched nested SDK) + `@modelcontextprotocol/sdk@^1.29.0` top-level; `agents@0.17.4` peer-requires `zod@^4`, so zod was bumped from the originally-planned v3 to v4 (no code changes needed — the basic schema surface used here, `z.string()/z.number()/z.enum()/.optional()/.default()`, is unchanged between v3 and v4). `npm audit` is clean post-upgrade.
 - **This repo is local-only by design** (task boundary) — `git init` + commits happened, but nothing was pushed to GitHub. That's Jason's call, not automatic here, unlike wafergraph's own auto-push standing permission (which is scoped to that repo only anyway).
 - **`~/projects/wafergraph` was read-only for this build** — CLAUDE.md and `data/*.json`/`data/enrichment/` were read for reference/vendoring (just the one taxonomy.json copy), nothing there was written, git-touched, or branched. A concurrent session was/is actively working in that repo during this build.
