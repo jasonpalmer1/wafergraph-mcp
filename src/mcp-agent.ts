@@ -11,6 +11,7 @@ import { getCompanies, getTaxonomy, getDeals, DATA_SOURCE_MODE, TAXONOMY_SNAPSHO
 import { buildGraph, findCompany, suppliersOf, customersOf, walkChain, type Graph } from "./graph";
 import { toAllowedCompany } from "./types";
 import { attributionForCompany, attributionGeneric, companyUrl, LINKS } from "./attribution";
+import { recordUsage } from "./usage";
 
 type State = Record<string, never>;
 
@@ -64,6 +65,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ query, segment, country }) => {
+        await recordUsage(this.env, "search_companies");
         const companies = await getCompanies();
         const q = query?.trim().toLowerCase();
         const seg = segment?.trim().toLowerCase();
@@ -108,6 +110,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ id }) => {
+        await recordUsage(this.env, "get_company");
         const companies = await getCompanies();
         const graph = buildGraph(companies);
         const company = findCompany(graph, id);
@@ -141,6 +144,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         inputSchema: {},
       },
       async () => {
+        await recordUsage(this.env, "get_segments");
         const [taxonomy, companies] = await Promise.all([getTaxonomy(), getCompanies()]);
 
         const segCount = new Map<string, number>();
@@ -199,6 +203,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ id, direction, depth }) => {
+        await recordUsage(this.env, "get_supply_chain");
         const companies = await getCompanies();
         const graph = buildGraph(companies);
         const focal = findCompany(graph, id);
@@ -235,6 +240,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ query, segment }) => {
+        await recordUsage(this.env, "get_deals");
         const [deals, companies] = await Promise.all([getDeals(), getCompanies()]);
         const byId = new Map(companies.map((c) => [c.id, c]));
         const q = query?.trim().toLowerCase();

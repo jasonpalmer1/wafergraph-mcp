@@ -9,6 +9,9 @@
       { "name": "WAFERGRAPH_MCP", "class_name": "WafergraphMCP" }
     ]
   },
+  "kv_namespaces": [
+    { "binding": "USAGE_KV", "id": "bea4c33ec0804978b8b11f952c438817" }
+  ],
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["WafergraphMCP"] }
   ],
