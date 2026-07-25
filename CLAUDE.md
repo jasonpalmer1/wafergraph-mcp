@@ -1,7 +1,7 @@
 # wafergraph-mcp — Remote MCP server for wafergraph.com's dataset
 
 Read-only Cloudflare Workers MCP server exposing wafergraph.com's semiconductor & AI
-supply-chain dataset (565 companies, 12 segments, 74 M&A deals, supplier/customer graph) as 5
+supply-chain dataset (565 companies, 12 segments, 74 M&A deals, supplier/customer graph) as 9
 tools for AI agents. No auth (v1, public data). Streamable HTTP transport at `/mcp`, human
 landing page at `/`. Independent project — not an official wafergraph product, but built to be
 a good-faith front door to it (every response links back to wafergraph.com and its paid report).
@@ -11,7 +11,7 @@ Live: **https://wafergraph-mcp.jwpalm99.workers.dev**
 ## File map
 
 - `src/index.ts` — Worker entry point. Routes `GET /` → landing page, `/mcp*` → the MCP agent, else 404.
-- `src/mcp-agent.ts` — `WafergraphMCP extends McpAgent`; registers the 5 tools in `init()`.
+- `src/mcp-agent.ts` — `WafergraphMCP extends McpAgent`; registers the 9 tools in `init()`.
 - `src/data.ts` — data layer: live-fetch + cache for companies/deals, vendored-snapshot read for taxonomy (hybrid mode — taxonomy.json isn't live-fetchable upstream; see `CLAUDE.local.md` for the full story).
 - `src/graph.ts` — supplier/customer edge graph + `walkChain` (tiered BFS up/down, capped depth 2). Reimplemented cleanly from the *algorithm* in wafergraph's `site/src/data.js` (`buildChain`/`suppliersOf`/`customersOf`) — not imported, per the read-only boundary on that repo.
 - `src/types.ts` — raw upstream shapes (`Company`, `Taxonomy`, `Deal`) + `AllowedCompany`/`toAllowedCompany()`, the single whitelist point that drops `key_products` (see field-discipline note below).

@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.wafergraph/wafergraph-mcp",
   "title": "Wafergraph MCP",
-  "description": "Read-only MCP server for wafergraph.com's semiconductor & AI supply-chain data: 5 tools, no auth.",
-  "version": "1.0.0",
+  "description": "Read-only MCP server for wafergraph.com's semiconductor & AI supply-chain data: 9 tools, no auth.",
+  "version": "1.1.0",
   "repository": {
     "url": "https://github.com/jasonpalmer1/wafergraph-mcp",
     "source": "github"

@@ -2,7 +2,7 @@
 
 A remote MCP server exposing [wafergraph.com](https://wafergraph.com)'s semiconductor & AI
 supply-chain dataset — 565 companies across 12 segments, the supplier/customer graph, and a
-74-deal M&A corpus — as five read-only tools any MCP-speaking AI agent can call directly.
+74-deal M&A corpus — as nine read-only tools any MCP-speaking AI agent can call directly.
 
 No auth, no cost, read-only. Streamable HTTP transport at `/mcp`. Human landing page at `/`.
 
@@ -17,6 +17,10 @@ Live: **https://wafergraph-mcp.jwpalm99.workers.dev**
 | `get_segments()` | The 12-segment taxonomy (+ subsegments, market_position enum) with live company counts. |
 | `get_supply_chain({id, direction, depth})` | Walk the supplier/customer graph from a focal company up to 2 tiers up (`"up"`), down (`"down"`), or `"both"`. |
 | `get_deals({query?, segment?})` | Search the M&A deal corpus. Compact list, capped at 30, with a total match count. |
+| `compare_companies({ids})` | Side-by-side comparison of 2-6 companies on aligned fields, plus their shared and unique supply-chain counterparties. |
+| `get_country_exposure({segment?})` | Geographic concentration: which countries host a segment's companies, ranked by count, with disclosed market-cap coverage. |
+| `find_chokepoints({segment?, limit?})` | Rank chokepoints by downstream dependency weighted by market position. Transparent heuristic, not a proprietary risk model. |
+| `analyze_portfolio_exposure({holdings})` | Map tickers or ids to segment/country exposure and flag suppliers that several holdings share. Not investment advice. |
 
 Every response includes:
 - `data` — the payload.

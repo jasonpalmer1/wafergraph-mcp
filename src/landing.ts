@@ -135,7 +135,7 @@ export function renderLanding(origin: string): string {
   <h1>wafergraph MCP</h1>
   <p class="lede">
     Read-only access to wafergraph.com's semiconductor &amp; AI supply-chain dataset — 565 companies across
-    12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as five tools any MCP-speaking
+    12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as nine tools any MCP-speaking
     AI agent can call directly.
   </p>
 
