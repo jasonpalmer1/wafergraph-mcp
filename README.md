@@ -39,6 +39,17 @@ with only `sk_enpulse` empty (defunct, absorbed into SKC 2025-12-23). Every fiel
 are still whitelisted (not blacklisted) in `src/types.ts` (`toAllowedCompany`), so anything added
 upstream later stays excluded by default until deliberately added.
 
+### What this server records
+
+Counters only, never identities. No IPs, no query contents or tool arguments, no user
+identifiers, no cookies, no PII. Specifically: how many times each tool was called per day, how
+many distinct sessions opened per day, and which client *software* connected (the `clientInfo`
+name and version your MCP client already sends in the `initialize` handshake, e.g.
+`claude-code@2.1.0`).
+
+Sessions are not users — one person reconnecting counts several times. Nothing recorded here can
+identify who you are.
+
 ## Install
 
 ### Claude Code

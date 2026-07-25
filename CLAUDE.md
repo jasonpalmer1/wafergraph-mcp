@@ -51,9 +51,33 @@ Auth: `wrangler login` (Cloudflare account with Workers + Durable Objects access
 
 ## Usage telemetry
 
-Lightweight per-tool-call counters only: tool name + UTC date, no IPs/query contents/PII. See
-`src/usage.ts` and the `USAGE_KV` binding in `wrangler.jsonc`. Key shape: `usage:YYYY-MM-DD:<tool>`
-→ integer count string. Telemetry failures never break a tool response (wrapped in try/catch).
+Counters only, never identities. No IPs, no query contents/arguments, no user identifiers, no
+PII. See `src/usage.ts` and the `USAGE_KV` binding in `wrangler.jsonc`. All values are integer
+count strings; telemetry failures never break a tool response (wrapped in try/catch).
+
+| Key | Meaning |
+|---|---|
+| `usage:YYYY-MM-DD:<tool>` | tool calls that day |
+| `sessions:YYYY-MM-DD` | distinct MCP sessions that day |
+| `client:YYYY-MM-DD:<name>@<version>` | which client *software* connected |
+| `selftest:<any of the above>` | our own probes, kept out of the real counts |
+
+`client` comes from the `initialize` handshake's `clientInfo` — software identity (e.g.
+`claude-code@2.1.0`), not a user identifier. It is attacker-controlled text from a remote peer,
+so `sanitizeClientPart()` restricts the charset and caps the length before it can become part of
+a KV key.
+
+**Sessions are not users.** One person reconnecting creates several sessions. Read it as distinct
+connections; an actual user count would require identifying people, which this server does not do.
+
+Self-test segregation exists because at this volume our own smoke tests dominate the numbers —
+a client naming itself `smoke`/`test`/`probe`/`dev`/`curl`/`debug`/`healthcheck` is counted under
+`selftest:` instead. Set your MCP client's `clientInfo.name` accordingly when probing.
+
+Read the counters with `npx wrangler kv key list --binding USAGE_KV --remote` (the `--remote` flag
+is required — without it wrangler reads local storage and everything looks empty). Run it from
+this directory, not from `~/projects/wafergraph`: that repo's auto-loaded `.env` sets a narrowly
+scoped `CF_API_TOKEN` that shadows the wrangler OAuth session and fails with auth error 10000.
 
 ---
 

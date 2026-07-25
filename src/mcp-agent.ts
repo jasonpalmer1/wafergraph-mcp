@@ -1,4 +1,4 @@
-// The MCP server itself: registers the 5 read-only tools over wafergraph's
+// The MCP server itself: registers the 9 read-only tools over wafergraph's
 // public dataset. Backed by a Durable Object per the `agents` package's
 // McpAgent pattern (free on the Workers Free plan — SQLite storage backend,
 // verified against current Cloudflare docs before building this). No
@@ -11,7 +11,7 @@ import { getCompanies, getTaxonomy, getDeals, DATA_SOURCE_MODE, TAXONOMY_SNAPSHO
 import { buildGraph, findCompany, suppliersOf, customersOf, walkChain, type Graph } from "./graph";
 import { toAllowedCompany } from "./types";
 import { attributionForCompany, attributionGeneric, companyUrl, LINKS } from "./attribution";
-import { recordUsage } from "./usage";
+import { recordUsage, recordSessionStart, isSelfTestClient } from "./usage";
 
 type State = Record<string, never>;
 
@@ -42,10 +42,24 @@ function companyRef(g: Graph, id: string) {
 }
 
 export class WafergraphMCP extends McpAgent<Env, State, {}> {
-  server = new McpServer({ name: "wafergraph-mcp", version: "1.0.0" });
+  server = new McpServer({ name: "wafergraph-mcp", version: "1.1.0" });
   initialState: State = {};
 
+  // Set once per session from the initialize handshake, then applied to every
+  // tool call so our own probes never inflate the real adoption numbers.
+  private selfTest = false;
+
   async init() {
+    // `initialize` is the only point where the client identifies itself. The
+    // SDK exposes clientInfo after the handshake completes, so record the
+    // session (and what software opened it) here rather than per tool call.
+    this.server.server.oninitialized = () => {
+      const info = this.server.server.getClientVersion();
+      this.selfTest = isSelfTestClient(info?.name);
+      // Fire-and-forget: a telemetry write must never delay or fail a session.
+      void recordSessionStart(this.env, info?.name, info?.version);
+    };
+
     // ---- 1. search_companies -------------------------------------------
     this.server.registerTool(
       "search_companies",
@@ -65,7 +79,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ query, segment, country }) => {
-        await recordUsage(this.env, "search_companies");
+        await recordUsage(this.env, "search_companies", this.selfTest);
         const companies = await getCompanies();
         const q = query?.trim().toLowerCase();
         const seg = segment?.trim().toLowerCase();
@@ -110,7 +124,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ id }) => {
-        await recordUsage(this.env, "get_company");
+        await recordUsage(this.env, "get_company", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
         const company = findCompany(graph, id);
@@ -144,7 +158,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         inputSchema: {},
       },
       async () => {
-        await recordUsage(this.env, "get_segments");
+        await recordUsage(this.env, "get_segments", this.selfTest);
         const [taxonomy, companies] = await Promise.all([getTaxonomy(), getCompanies()]);
 
         const segCount = new Map<string, number>();
@@ -203,7 +217,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ id, direction, depth }) => {
-        await recordUsage(this.env, "get_supply_chain");
+        await recordUsage(this.env, "get_supply_chain", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
         const focal = findCompany(graph, id);
@@ -240,7 +254,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ query, segment }) => {
-        await recordUsage(this.env, "get_deals");
+        await recordUsage(this.env, "get_deals", this.selfTest);
         const [deals, companies] = await Promise.all([getDeals(), getCompanies()]);
         const byId = new Map(companies.map((c) => [c.id, c]));
         const q = query?.trim().toLowerCase();
@@ -300,7 +314,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ ids }) => {
-        await recordUsage(this.env, "compare_companies");
+        await recordUsage(this.env, "compare_companies", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
 
@@ -365,7 +379,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ segment }) => {
-        await recordUsage(this.env, "get_country_exposure");
+        await recordUsage(this.env, "get_country_exposure", this.selfTest);
         const companies = await getCompanies();
         const seg = segment?.trim().toLowerCase();
 
@@ -432,7 +446,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ segment, limit }) => {
-        await recordUsage(this.env, "find_chokepoints");
+        await recordUsage(this.env, "find_chokepoints", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
         const seg = segment?.trim().toLowerCase();
@@ -509,7 +523,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ holdings }) => {
-        await recordUsage(this.env, "analyze_portfolio_exposure");
+        await recordUsage(this.env, "analyze_portfolio_exposure", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
 
