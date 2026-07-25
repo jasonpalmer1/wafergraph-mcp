@@ -42,7 +42,7 @@ function companyRef(g: Graph, id: string) {
 }
 
 export class WafergraphMCP extends McpAgent<Env, State, {}> {
-  server = new McpServer({ name: "wafergraph-mcp", version: "1.1.0" });
+  server = new McpServer({ name: "wafergraph-mcp", version: "1.1.1" });
   initialState: State = {};
 
   // Set once per session from the initialize handshake, then applied to every
@@ -134,11 +134,28 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
           });
         }
 
-        const suppliers = suppliersOf(graph, company.id).map((sid) => companyRef(graph, sid));
-        const customers = customersOf(graph, company.id).map((cid) => companyRef(graph, cid));
+        // Hub companies carry very dense edge lists (memory makers list 175
+        // suppliers), which made this response ~32KB — heavy for an LLM
+        // context window. Cap each side generously and disclose the
+        // truncation; most companies are far under the cap and unchanged.
+        // Deeper walks belong to get_supply_chain.
+        const EDGE_CAP = 80;
+        const supplierIds = suppliersOf(graph, company.id);
+        const customerIds = customersOf(graph, company.id);
+        const suppliers = supplierIds.slice(0, EDGE_CAP).map((sid) => companyRef(graph, sid));
+        const customers = customerIds.slice(0, EDGE_CAP).map((cid) => companyRef(graph, cid));
 
         return jsonResult({
-          data: { company: toAllowedCompany(company), suppliers, customers },
+          data: {
+            company: toAllowedCompany(company),
+            suppliers,
+            customers,
+            supplier_count: supplierIds.length,
+            customer_count: customerIds.length,
+            ...(supplierIds.length > EDGE_CAP || customerIds.length > EDGE_CAP
+              ? { note: `Edge lists capped at ${EDGE_CAP} per side; supplier_count/customer_count carry the true totals. Use get_supply_chain for the full graph.` }
+              : {}),
+          },
           attribution: attributionForCompany(company.id),
           links: LINKS,
         });
@@ -318,12 +335,18 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         const companies = await getCompanies();
         const graph = buildGraph(companies);
 
+        // Resolve tickers too, matching analyze_portfolio_exposure — users who
+        // just passed ["NVDA","TSM"] there WILL paste the same list here, and
+        // did (found by user-journey testing 2026-07-25, J5).
+        const byTicker = new Map<string, (typeof companies)[number]>();
+        for (const c of companies) if (c.ticker) byTicker.set(c.ticker.toUpperCase(), c);
+
         const resolved: { input: string; company: (typeof companies)[number] }[] = [];
         const unresolved: string[] = [];
         for (const raw of ids) {
-          const c = findCompany(graph, raw);
-          if (c) resolved.push({ input: raw, company: c });
-          else unresolved.push(raw);
+          const c = findCompany(graph, raw) ?? byTicker.get(raw.trim().toUpperCase());
+          if (c && !resolved.some((r) => r.company.id === c.id)) resolved.push({ input: raw, company: c });
+          else if (!c) unresolved.push(raw);
         }
         if (resolved.length < 2) {
           return errorResult("Need at least 2 resolvable companies to compare.", {
