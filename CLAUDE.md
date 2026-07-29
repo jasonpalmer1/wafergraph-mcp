@@ -1,7 +1,7 @@
 # wafergraph-mcp — Remote MCP server for wafergraph.com's dataset
 
 Read-only Cloudflare Workers MCP server exposing wafergraph.com's semiconductor & AI
-supply-chain dataset (565 companies, 12 segments, 74 M&A deals, supplier/customer graph) as 9
+supply-chain dataset (565 companies, 12 segments, 74 M&A deals, supplier/customer graph) as 30
 tools for AI agents. No auth (v1, public data). Streamable HTTP transport at `/mcp`, human
 landing page at `/`. Independent project — not an official wafergraph product, but built to be
 a good-faith front door to it (every response links back to wafergraph.com and its paid report).
@@ -11,7 +11,13 @@ Live: **https://wafergraph-mcp.jwpalm99.workers.dev**
 ## File map
 
 - `src/index.ts` — Worker entry point. Routes `GET /` → landing page, `/mcp*` → the MCP agent, else 404.
-- `src/mcp-agent.ts` — `WafergraphMCP extends McpAgent`; registers the 9 tools in `init()`.
+- `src/mcp-agent.ts` — `WafergraphMCP extends McpAgent`; registers the first 9 tools inline in `init()`, then delegates to the `src/tools/` modules for tools 10-30.
+- `src/tools/shared.ts` — helpers every tool module shares: `jsonResult`/`errorResult`, compact company refs, `pricedCoverage()` (market cap is only ~72% filled, so every cap aggregate must ship its coverage), `hhi()`, `tallyBy()`, and the `ToolCtx`/`ToolRegistrar` contract.
+- `src/tools/screen.ts` — screening & discovery: `filter_companies`, `list_subsegments`, `get_subsegment`, `find_similar_companies`, `rank_by_market_cap`, `resolve_ticker`.
+- `src/tools/geo.ts` — geography & structure: `list_countries`, `get_country_profile`, `compare_countries`, `get_segment_leaders`, `get_upstream_concentration`. Country is HQ, not fab location; every tool here says so.
+- `src/tools/graphtools.ts` — graph analysis: `find_paths_between`, `simulate_disruption`, `find_single_source_dependencies`, `rank_by_connectivity`, `find_common_suppliers`.
+- `src/tools/deals.ts` — deals & dataset: `get_deal`, `find_deals_by_company`, `get_ma_activity_summary`, `find_consolidation_hotspots`, `get_dataset_stats`.
+- `scripts/smoke.mjs` — live JSON-RPC smoke test over Streamable HTTP; calls every tool `tools/list` reports and fails if any tool has no case, so a new tool cannot ship untested. `node scripts/smoke.mjs [baseUrl]`.
 - `src/data.ts` — data layer: live-fetch + cache for companies/deals, vendored-snapshot read for taxonomy (hybrid mode — taxonomy.json isn't live-fetchable upstream; see `CLAUDE.local.md` for the full story).
 - `src/graph.ts` — supplier/customer edge graph + `walkChain` (tiered BFS up/down, capped depth 2). Reimplemented cleanly from the *algorithm* in wafergraph's `site/src/data.js` (`buildChain`/`suppliersOf`/`customersOf`) — not imported, per the read-only boundary on that repo.
 - `src/types.ts` — raw upstream shapes (`Company`, `Taxonomy`, `Deal`) + `AllowedCompany`/`toAllowedCompany()`, the single whitelist point that drops `key_products` (see field-discipline note below).

@@ -1,6 +1,6 @@
 {
   "name": "wafergraph-mcp",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Remote MCP server exposing the wafergraph.com semiconductor supply-chain dataset (companies, segments, supply-chain graph, M&A deals) as read-only tools for AI agents.",

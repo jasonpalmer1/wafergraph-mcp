@@ -2,7 +2,7 @@
 
 A remote MCP server exposing [wafergraph.com](https://wafergraph.com)'s semiconductor & AI
 supply-chain dataset — 565 companies across 12 segments, the supplier/customer graph, and a
-74-deal M&A corpus — as nine read-only tools any MCP-speaking AI agent can call directly.
+74-deal M&A corpus — as 30 read-only tools any MCP-speaking AI agent can call directly.
 
 No auth, no cost, read-only. Streamable HTTP transport at `/mcp`. Human landing page at `/`.
 
@@ -22,11 +22,53 @@ Live: **https://wafergraph-mcp.jwpalm99.workers.dev**
 | `find_chokepoints({segment?, limit?})` | Rank chokepoints by downstream dependency weighted by market position. Transparent heuristic, not a proprietary risk model. |
 | `analyze_portfolio_exposure({holdings})` | Map tickers or ids to segment/country exposure and flag suppliers that several holdings share. Not investment advice. |
 
+### Screening & discovery
+
+| Tool | Purpose |
+|---|---|
+| `filter_companies({...})` | Structured multi-criteria screen (segment, subsegment, country, position, public, market-cap band, has_ticker) with sorting and pagination. |
+| `list_subsegments({segment?})` | Every subsegment with its live company count and parent segment. |
+| `get_subsegment({segment, subsegment})` | All companies in one subsegment with position and country breakdowns. |
+| `find_similar_companies({id})` | Nearest structural neighbours by Jaccard similarity over segment tags and shared supply-chain counterparties. |
+| `rank_by_market_cap({segment?, country?, limit?})` | Largest companies by disclosed market cap, always with its coverage ratio. |
+| `resolve_ticker({inputs})` | Batch-resolve up to 25 tickers, names, or ids to canonical companies, with suggestions on a miss. |
+
+### Geography & structure
+
+| Tool | Purpose |
+|---|---|
+| `list_countries({segment?})` | Every country with company counts, segment mix, and public/private split. |
+| `get_country_profile({country})` | One country in depth, including how many supply relationships cross its border in each direction. |
+| `compare_countries({countries})` | 2-5 countries side by side, with uniquely-present and dominant segments. |
+| `get_segment_leaders({segment?})` | Who occupies the monopoly and leader positions in a segment. |
+| `get_upstream_concentration({id})` | One company's supplier mix by country and segment with an HHI index and edge-coverage context. |
+
+### Graph analysis
+
+| Tool | Purpose |
+|---|---|
+| `find_paths_between({from, to, max_depth?})` | Documented supply paths between two companies, shortest first. |
+| `simulate_disruption({company_id? | country? | segment?})` | Blast radius if a company, country, or segment goes offline, ranking those left with no documented alternative. |
+| `find_single_source_dependencies({segment?, country?})` | Customer/subsegment pairs served by exactly one documented supplier. |
+| `rank_by_connectivity({metric?, limit?})` | Rank by documented degree. Measures documentation density, not real-world criticality. |
+| `find_common_suppliers({ids? | segment?})` | Suppliers shared across an arbitrary set of companies, with the share of the set each serves. |
+
+### Deals & dataset
+
+| Tool | Purpose |
+|---|---|
+| `get_deal({id})` | One M&A deal in full, with parties resolved to companies where possible. |
+| `find_deals_by_company({id})` | Every deal a company took part in, split by role, with the match method exposed. |
+| `get_ma_activity_summary()` | Deal counts and disclosed values by year, type, and status. |
+| `find_consolidation_hotspots()` | Which segments are consolidating, with unresolvable deals counted rather than dropped. |
+| `get_dataset_stats()` | What this dataset contains, how fresh it is, and where it is thin. Call it to learn what the data cannot answer. |
+
 Every response includes:
 - `data` — the payload.
 - `attribution` — compiled-by/sources block (SEC, Wikidata, Wikipedia, GLEIF) plus a
   `company_url` back to the full sourced profile on wafergraph.com.
-- `links` — `{ report, newsletter }` pointing back to wafergraph.com and its $99 report.
+- `links` — `{ report, newsletter }` pointing back to wafergraph.com and its hand-scored
+  Vendor Exposure Review.
 
 ### Field discipline
 

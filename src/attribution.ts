@@ -35,8 +35,11 @@ export function attributionGeneric(): Attribution {
   return { ...BASE_ATTRIBUTION };
 }
 
+// The $99 self-serve report was retired 2026-07-25 and replaced by a $6,000
+// hand-scored review. This block rides on every tool response, so a stale
+// price here is a stale price in front of every user of this server.
 export const LINKS = {
   report: "https://wafergraph.com/pro",
   newsletter: "https://wafergraph.com",
-  note: "Deeper analysis: the $99 wafergraph report (wafergraph.com/pro).",
+  note: "Deeper analysis: wafergraph's hand-scored Vendor Exposure Review and Portfolio Concentration Review, $6,000 fixed scope (wafergraph.com/pro). A free coverage check is offered on the same page.",
 } as const;

@@ -135,17 +135,33 @@ export function renderLanding(origin: string): string {
   <h1>wafergraph MCP</h1>
   <p class="lede">
     Read-only access to wafergraph.com's semiconductor &amp; AI supply-chain dataset — 565 companies across
-    12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as nine tools any MCP-speaking
+    12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as 30 tools any MCP-speaking
     AI agent can call directly.
   </p>
 
   <h2>Tools</h2>
   <ul class="tools">
     <li><code>search_companies</code> <span>— name/description search with segment &amp; country filters</span></li>
+    <li><code>filter_companies</code> <span>— structured screen: segment, country, position, cap band, sortable</span></li>
     <li><code>get_company</code> <span>— full profile + supplier/customer edges for one company</span></li>
-    <li><code>get_segments</code> <span>— the 12-segment taxonomy with live company counts</span></li>
+    <li><code>resolve_ticker</code> <span>— batch-resolve tickers, names or ids to canonical companies</span></li>
+    <li><code>find_similar_companies</code> <span>— nearest structural neighbours to a company</span></li>
+    <li><code>get_segments</code> / <code>list_subsegments</code> / <code>get_subsegment</code> <span>— the taxonomy, with live counts</span></li>
+    <li><code>rank_by_market_cap</code> <span>— largest companies, always with cap coverage</span></li>
     <li><code>get_supply_chain</code> <span>— walk the supplier/customer graph up to 2 tiers</span></li>
-    <li><code>get_deals</code> <span>— search the M&amp;A deal corpus</span></li>
+    <li><code>find_paths_between</code> <span>— documented supply paths between any two companies</span></li>
+    <li><code>simulate_disruption</code> <span>— blast radius if a company, country or segment goes offline</span></li>
+    <li><code>find_single_source_dependencies</code> <span>— buyers with exactly one documented supplier</span></li>
+    <li><code>find_common_suppliers</code> <span>— shared upstream across a set of companies</span></li>
+    <li><code>find_chokepoints</code> / <code>rank_by_connectivity</code> <span>— who everything routes through</span></li>
+    <li><code>get_upstream_concentration</code> <span>— one company's supplier mix, with an HHI index</span></li>
+    <li><code>list_countries</code> / <code>get_country_profile</code> / <code>compare_countries</code> <span>— geography</span></li>
+    <li><code>get_country_exposure</code> / <code>get_segment_leaders</code> <span>— who runs each layer, and from where</span></li>
+    <li><code>compare_companies</code> <span>— 2-6 companies side by side, plus what they share</span></li>
+    <li><code>analyze_portfolio_exposure</code> <span>— tickers in, shared upstream dependencies out</span></li>
+    <li><code>get_deals</code> / <code>get_deal</code> / <code>find_deals_by_company</code> <span>— the M&amp;A corpus</span></li>
+    <li><code>get_ma_activity_summary</code> / <code>find_consolidation_hotspots</code> <span>— where consolidation is happening</span></li>
+    <li><code>get_dataset_stats</code> <span>— coverage, freshness, and what this data cannot answer</span></li>
   </ul>
 
   <h2>Claude Code</h2>
@@ -166,7 +182,7 @@ export function renderLanding(origin: string): string {
 
   <div class="row">
     <a class="btn primary" href="https://wafergraph.com" target="_blank" rel="noopener">Explore wafergraph.com &rarr;</a>
-    <a class="btn secondary" href="https://wafergraph.com/pro" target="_blank" rel="noopener">The $99 report</a>
+    <a class="btn secondary" href="https://wafergraph.com/pro" target="_blank" rel="noopener">Vendor Exposure Review &rarr;</a>
   </div>
 
   <footer>

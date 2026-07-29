@@ -1,4 +1,6 @@
-// The MCP server itself: registers the 9 read-only tools over wafergraph's
+// The MCP server itself: registers the 30 read-only tools over wafergraph's
+// public dataset. The first nine live in this file; tools 10-30 are grouped
+// by job into modules under src/tools/ and registered at the end of init().
 // public dataset. Backed by a Durable Object per the `agents` package's
 // McpAgent pattern (free on the Workers Free plan — SQLite storage backend,
 // verified against current Cloudflare docs before building this). No
@@ -12,6 +14,11 @@ import { buildGraph, findCompany, suppliersOf, customersOf, walkChain, type Grap
 import { toAllowedCompany } from "./types";
 import { attributionForCompany, attributionGeneric, companyUrl, LINKS } from "./attribution";
 import { recordUsage, recordSessionStart, isSelfTestClient } from "./usage";
+import type { ToolCtx } from "./tools/shared";
+import { registerScreenTools } from "./tools/screen";
+import { registerGeoTools } from "./tools/geo";
+import { registerGraphTools } from "./tools/graphtools";
+import { registerDealTools } from "./tools/deals";
 
 type State = Record<string, never>;
 
@@ -42,7 +49,7 @@ function companyRef(g: Graph, id: string) {
 }
 
 export class WafergraphMCP extends McpAgent<Env, State, {}> {
-  server = new McpServer({ name: "wafergraph-mcp", version: "1.1.1" });
+  server = new McpServer({ name: "wafergraph-mcp", version: "1.2.0" });
   initialState: State = {};
 
   // Set once per session from the initialize handshake, then applied to every
@@ -605,6 +612,17 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         });
       },
     );
+
+    // ---- 10-30: the rest of the toolset, grouped by job ------------------
+    // Split into modules under src/tools/ so this file stays readable; each
+    // registers its own tools against the same server and shares the helpers
+    // in src/tools/shared.ts. ctx.isSelfTest is read at call time because the
+    // flag is set by the initialize handshake, after registration runs.
+    const ctx: ToolCtx = { env: this.env, isSelfTest: () => this.selfTest };
+    registerScreenTools(this.server, ctx);
+    registerGeoTools(this.server, ctx);
+    registerGraphTools(this.server, ctx);
+    registerDealTools(this.server, ctx);
   }
 }
 
