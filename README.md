@@ -6,7 +6,7 @@ supply-chain dataset — 565 companies across 12 segments, the supplier/customer
 
 No auth, no cost, read-only. Streamable HTTP transport at `/mcp`. Human landing page at `/`.
 
-Live: **https://wafergraph-mcp.jwpalm99.workers.dev**
+Live: **https://mcp.wafergraph.com**
 
 ## Tools
 
@@ -97,7 +97,7 @@ identify who you are.
 ### Claude Code
 
 ```
-claude mcp add --transport http wafergraph https://wafergraph-mcp.jwpalm99.workers.dev/mcp
+claude mcp add --transport http wafergraph https://mcp.wafergraph.com/mcp
 ```
 
 ### claude.ai (custom connector)
@@ -105,7 +105,7 @@ claude mcp add --transport http wafergraph https://wafergraph-mcp.jwpalm99.worke
 Settings → Connectors → Add custom connector → paste:
 
 ```
-https://wafergraph-mcp.jwpalm99.workers.dev/mcp
+https://mcp.wafergraph.com/mcp
 ```
 
 ### Generic MCP client (Streamable HTTP)
@@ -114,7 +114,7 @@ https://wafergraph-mcp.jwpalm99.workers.dev/mcp
 {
   "mcpServers": {
     "wafergraph": {
-      "url": "https://wafergraph-mcp.jwpalm99.workers.dev/mcp"
+      "url": "https://mcp.wafergraph.com/mcp"
     }
   }
 }

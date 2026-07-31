@@ -6,7 +6,7 @@ tools for AI agents. No auth (v1, public data). Streamable HTTP transport at `/m
 landing page at `/`. Independent project — not an official wafergraph product, but built to be
 a good-faith front door to it (every response links back to wafergraph.com and its paid report).
 
-Live: **https://wafergraph-mcp.jwpalm99.workers.dev**
+Live: **https://mcp.wafergraph.com**
 
 ## File map
 

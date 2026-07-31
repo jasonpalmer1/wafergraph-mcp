@@ -12,7 +12,7 @@
 // clientInfo.name is "smoke" on purpose: src/usage.ts routes that under the
 // `selftest:` key prefix so our own probes never inflate real adoption counts.
 
-const BASE = (process.argv[2] || "https://wafergraph-mcp.jwpalm99.workers.dev").replace(/\/$/, "");
+const BASE = (process.argv[2] || "https://mcp.wafergraph.com").replace(/\/$/, "");
 const URL_MCP = `${BASE}/mcp`;
 
 let sessionId = null;

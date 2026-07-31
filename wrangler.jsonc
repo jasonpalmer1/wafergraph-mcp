@@ -4,6 +4,10 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-07-19",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "mcp.wafergraph.com", "custom_domain": true }
+  ],
   "durable_objects": {
     "bindings": [
       { "name": "WAFERGRAPH_MCP", "class_name": "WafergraphMCP" }

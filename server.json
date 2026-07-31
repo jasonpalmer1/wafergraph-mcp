@@ -3,7 +3,7 @@
   "name": "com.wafergraph/wafergraph-mcp",
   "title": "Wafergraph MCP",
   "description": "Read-only MCP server for wafergraph.com's semiconductor & AI supply-chain data: 30 tools, no auth.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "repository": {
     "url": "https://github.com/jasonpalmer1/wafergraph-mcp",
     "source": "github"
@@ -11,7 +11,7 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://wafergraph-mcp.jwpalm99.workers.dev/mcp"
+      "url": "https://mcp.wafergraph.com/mcp"
     }
   ]
 }
