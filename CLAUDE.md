@@ -1,7 +1,7 @@
 # wafergraph-mcp — Remote MCP server for wafergraph.com's dataset
 
 Read-only Cloudflare Workers MCP server exposing wafergraph.com's semiconductor & AI
-supply-chain dataset (hundreds of companies, 12 segments, M&A deals, supplier/customer graph) as 33
+supply-chain dataset (hundreds of companies, 12 segments, M&A deals, supplier/customer graph) as 36
 tools for AI agents. No auth (v1, public data). Streamable HTTP transport at `/mcp`, human
 landing page at `/`. Independent project — not an official wafergraph product, but built to be
 a good-faith front door to it (every response links back to wafergraph.com and its paid report).

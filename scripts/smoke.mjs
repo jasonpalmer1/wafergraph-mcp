@@ -15,6 +15,13 @@
 const BASE = (process.argv[2] || "https://mcp.wafergraph.com").replace(/\/$/, "");
 const URL_MCP = `${BASE}/mcp`;
 
+// Keep in sync with src/version.ts TOOL_COUNT (smoke fails on drift).
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+const versionTs = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/version.ts"), "utf8");
+const EXPECTED_TOOL_COUNT = Number(versionTs.match(/TOOL_COUNT\s*=\s*(\d+)/)?.[1] ?? NaN);
+
 let sessionId = null;
 let nextId = 1;
 
@@ -153,13 +160,18 @@ const run = async () => {
   await rpc("notifications/initialized", {}, { notify: true });
 
   const listed = (await rpc("tools/list", {})).tools.map((t) => t.name);
-  console.log(`tools/list reports ${listed.length} tools\n`);
+  console.log(`tools/list reports ${listed.length} tools (expect ${EXPECTED_TOOL_COUNT})\n`);
 
   const uncovered = listed.filter((name) => !(name in CASES));
   const stale = Object.keys(CASES).filter((name) => !listed.includes(name));
 
   let pass = 0;
   const failures = [];
+  if (!Number.isFinite(EXPECTED_TOOL_COUNT)) {
+    failures.push("could not parse TOOL_COUNT from src/version.ts");
+  } else if (listed.length !== EXPECTED_TOOL_COUNT) {
+    failures.push(`tools/list count ${listed.length} !== TOOL_COUNT ${EXPECTED_TOOL_COUNT} in src/version.ts`);
+  }
 
   for (const name of listed) {
     if (!(name in CASES)) continue;
