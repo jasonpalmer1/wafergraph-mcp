@@ -141,7 +141,7 @@ export function renderLanding(origin: string): string {
   <h1>wafergraph MCP</h1>
   <p class="lede">
     Read-only access to wafergraph.com's semiconductor &amp; AI supply-chain dataset — hundreds of companies across
-    12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as 30 tools any MCP-speaking
+    12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as 31 tools any MCP-speaking
     AI agent can call directly.
   </p>
 
@@ -152,6 +152,7 @@ export function renderLanding(origin: string): string {
     <li><code>get_company</code> <span>— full profile + supplier/customer edges for one company</span></li>
     <li><code>resolve_ticker</code> <span>— batch-resolve tickers, names or ids to canonical companies</span></li>
     <li><code>find_similar_companies</code> <span>— nearest structural neighbours to a company</span></li>
+    <li><code>find_substitutes</code> <span>— same-niche alternatives by taxonomy overlap (not commercial drop-ins)</span></li>
     <li><code>get_segments</code> / <code>list_subsegments</code> / <code>get_subsegment</code> <span>— the taxonomy, with live counts</span></li>
     <li><code>rank_by_market_cap</code> <span>— largest companies, always with cap coverage</span></li>
     <li><code>get_supply_chain</code> <span>— walk the supplier/customer graph up to 2 tiers</span></li>

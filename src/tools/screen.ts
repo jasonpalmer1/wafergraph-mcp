@@ -534,4 +534,98 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       });
     },
   );
+
+  // ---- find_substitutes ---------------------------------------------------
+  // Natural follow-up to find_chokepoints / find_single_source_dependencies:
+  // "who else is in the same niche that an agent could treat as an alternative?"
+  server.registerTool(
+    "find_substitutes",
+    {
+      title: "Find substitute companies",
+      description:
+        "Companies that share at least one segment:subsegment tag with the focal company, ranked by structural " +
+        "overlap (shared tags + similar market_position). Use after find_chokepoints or find_single_source_dependencies " +
+        "when asking 'what else could fill this role?' — this is a taxonomy/position screen, not a commercial " +
+        "interchangeability judgment.",
+      inputSchema: {
+        id: z.string().describe("Focal company id, name, or ticker."),
+        limit: z.number().int().min(1).max(25).optional().default(10).describe("Max substitutes to return (1-25, default 10)."),
+        same_subsegment_only: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe("If true (default), require at least one identical segment:subsegment tag. If false, same parent segment is enough."),
+      },
+    },
+    async ({ id, limit, same_subsegment_only }) => {
+      void recordUsage(ctx.env, "find_substitutes", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
+      const focal = resolveCompany(graph, id);
+      if (!focal) {
+        return errorResult(`No company found for "${id}".`, {
+          hint: "Use search_companies or resolve_ticker to find a valid id, name, or ticker.",
+        });
+      }
+
+      const POSITION_RANK: Record<string, number> = {
+        monopoly: 0,
+        leader: 1,
+        major: 2,
+        challenger: 3,
+        niche: 4,
+      };
+      const focalTags = new Set(focal.segments.map((s) => `${s.segment}:${s.subsegment}`));
+      const focalSegs = new Set(focal.segments.map((s) => s.segment));
+      const requireSub = same_subsegment_only !== false;
+
+      const scored = companies
+        .filter((c) => c.id !== focal.id)
+        .map((c) => {
+          const tags = c.segments.map((s) => `${s.segment}:${s.subsegment}`);
+          const shared_subsegments = tags.filter((t) => focalTags.has(t));
+          const shared_segments = c.segments.map((s) => s.segment).filter((s) => focalSegs.has(s));
+          const uniqueSharedSegs = [...new Set(shared_segments)];
+          if (requireSub ? shared_subsegments.length === 0 : uniqueSharedSegs.length === 0) {
+            return null;
+          }
+          const posDelta = Math.abs(
+            (POSITION_RANK[c.market_position] ?? 3) - (POSITION_RANK[focal.market_position] ?? 3),
+          );
+          // Prefer more shared subsegments, then closer market position, then larger cap.
+          const score = shared_subsegments.length * 10 + uniqueSharedSegs.length * 2 - posDelta + (typeof c.market_cap_usd_b === "number" ? 0.001 * c.market_cap_usd_b : 0);
+          return {
+            ...briefRef(c),
+            segments: c.segments,
+            shared_subsegments,
+            shared_segments: uniqueSharedSegs,
+            market_position_delta: posDelta,
+            score: Number(score.toFixed(3)),
+          };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null)
+        .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+
+      const lim = Math.min(Math.max(limit ?? 10, 1), 25);
+      const results = scored.slice(0, lim);
+
+      return jsonResult({
+        data: {
+          focal: { ...briefRef(focal), segments: focal.segments, market_position: focal.market_position },
+          same_subsegment_only: requireSub,
+          results,
+          total: scored.length,
+          returned: results.length,
+          methodology:
+            "Candidates share taxonomy tags with the focal (subsegment by default, or parent segment if " +
+            "same_subsegment_only=false). Ranked by shared_subsegments*10 + shared_segments*2 − |position rank delta| " +
+            "(+ tiny market-cap tiebreak). Not a claim that products are drop-in replacements.",
+          caveat:
+            "Taxonomy overlap ≠ commercial substitutability. A 'leader' and a 'niche' in the same subsegment may not " +
+            "serve the same customers. Cross-check with get_company / get_supply_chain before treating anyone as an alternative.",
+        },
+        attribution: attributionForCompany(focal.id),
+        links: LINKS,
+      });
+    },
+  );
 };

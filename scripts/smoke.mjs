@@ -60,6 +60,7 @@ const CASES = {
   find_similar_companies: { id: "asml" },
   rank_by_market_cap: { segment: "design_fabless", limit: 5 },
   resolve_ticker: { queries: ["NVDA", "asml", "Shin-Etsu Chemical", "not_a_real_company"] },
+  find_substitutes: { id: "asml", limit: 5 },
 
   list_countries: {},
   get_country_profile: { country: "Taiwan" },
@@ -83,12 +84,17 @@ const CASES = {
 /** Light shape checks — still success-oriented, but empty/wrong payloads fail. */
 const ASSERTS = {
   get_company: (d) => d?.company?.id === "tsmc",
+  get_supply_chain: (d) =>
+    d?.focal_id === "nvidia" &&
+    Array.isArray(d?.tiers) &&
+    !d.tiers.some((t) => t.tier !== 0 && (t.companies ?? []).some((c) => c.id === "nvidia")),
   resolve_ticker: (d) => Array.isArray(d?.results) && typeof d?.matched_count === "number",
   rank_by_market_cap: (d) => Array.isArray(d?.results) && d.results.every((r) => typeof r.market_cap_usd_b === "number"),
   find_paths_between: (d) => Array.isArray(d?.paths),
   get_deal: (d) => typeof d?.id === "string" && d.id.includes("amd"),
   get_dataset_stats: (d) => typeof d?.counts?.companies === "number" && d.counts.companies > 0,
   simulate_disruption: (d) => d?.removed?.criterion === "company",
+  find_substitutes: (d) => Array.isArray(d?.results) && d?.focal?.id,
 };
 
 function preview(result, toolName) {

@@ -1,7 +1,7 @@
 # wafergraph-mcp — Remote MCP server for wafergraph.com's dataset
 
 Read-only Cloudflare Workers MCP server exposing wafergraph.com's semiconductor & AI
-supply-chain dataset (hundreds of companies, 12 segments, M&A deals, supplier/customer graph) as 30
+supply-chain dataset (hundreds of companies, 12 segments, M&A deals, supplier/customer graph) as 31
 tools for AI agents. No auth (v1, public data). Streamable HTTP transport at `/mcp`, human
 landing page at `/`. Independent project — not an official wafergraph product, but built to be
 a good-faith front door to it (every response links back to wafergraph.com and its paid report).
@@ -15,11 +15,11 @@ Live: **https://mcp.wafergraph.com**
 - `src/tools/core.ts` — tools 1–9 (search/get company, segments, supply chain, deals, compare, country exposure, chokepoints, portfolio).
 - `src/tools/shared.ts` — `jsonResult`/`errorResult`, `companyRef`/`briefRef`, `pricedCoverage`, `hhi`, `tallyBy`, country + deal-party resolvers, `ToolCtx`/`ToolRegistrar`.
 - `src/tools/ctxload.ts` — `loadGraph()` / `loadAll()` (preferred entry for tool handlers; graph is identity-cached).
-- `src/tools/screen.ts` — screening & discovery: `filter_companies`, `list_subsegments`, `get_subsegment`, `find_similar_companies`, `rank_by_market_cap`, `resolve_ticker`.
+- `src/tools/screen.ts` — screening & discovery: `filter_companies`, `list_subsegments`, `get_subsegment`, `find_similar_companies`, `find_substitutes`, `rank_by_market_cap`, `resolve_ticker`.
 - `src/tools/geo.ts` — geography & structure: `list_countries`, `get_country_profile`, `compare_countries`, `get_segment_leaders`, `get_upstream_concentration`. Country is HQ, not fab location; every tool here says so.
 - `src/tools/graphtools.ts` — graph analysis: `find_paths_between`, `simulate_disruption`, `find_single_source_dependencies`, `rank_by_connectivity`, `find_common_suppliers`.
 - `src/tools/deals.ts` — deals & dataset: `get_deal`, `find_deals_by_company`, `get_ma_activity_summary`, `find_consolidation_hotspots`, `get_dataset_stats`.
-- `src/ratelimit.ts` — optional KV rate-limit scaffold (**not wired**; see `docs/FEATURE_SCAFFOLD.md`).
+- `src/ratelimit.ts` — optional KV rate-limit; wired in `src/index.ts` when Worker var `RATE_LIMIT_ENABLED=1`.
 - `scripts/smoke.mjs` — live JSON-RPC smoke test over Streamable HTTP; calls every tool `tools/list` reports and fails if any tool has no case, so a new tool cannot ship untested. `node scripts/smoke.mjs [baseUrl]`.
 - `src/data.ts` — data layer: live-fetch + cache for companies/deals, vendored-snapshot read for taxonomy (hybrid mode — taxonomy.json isn't live-fetchable upstream; see `CLAUDE.local.md` for the full story).
 - `src/graph.ts` — supplier/customer edge graph + `walkChain` (tiered BFS up/down, capped depth 2) + `resolveCompany` / `byTicker`. Identity-cached `buildGraph`.

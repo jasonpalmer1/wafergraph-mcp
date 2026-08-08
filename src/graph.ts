@@ -137,10 +137,10 @@ function walkOneDirection(
     for (const id of frontier) {
       const neighbors = mode === "up" ? suppliersOf(g, id) : customersOf(g, id);
       for (const nid of neighbors) {
-        if (!tier.has(nid)) {
-          tier.set(nid, signed);
-          next.push(nid);
-        }
+        // Never re-admit the focal via a 2-cycle (A↔B would put A in tier ±2).
+        if (nid === focalId || tier.has(nid)) continue;
+        tier.set(nid, signed);
+        next.push(nid);
       }
     }
     frontier = next;
@@ -155,7 +155,7 @@ export function walkChain(g: Graph, focalId: string, direction: Direction, depth
   const downTier =
     direction === "down" || direction === "both" ? walkOneDirection(g, focalId, depth, "down") : new Map<string, number>();
 
-  const dual_role_company_ids = [...upTier.keys()].filter((id) => downTier.has(id));
+  const dual_role_company_ids = [...upTier.keys()].filter((id) => id !== focalId && downTier.has(id));
 
   const byTier = new Map<number, string[]>();
   byTier.set(0, [focalId]);

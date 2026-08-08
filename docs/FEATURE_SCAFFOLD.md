@@ -20,25 +20,18 @@ until you implement + deploy from the laptop (see `CLAUDE_LOCAL_PICKUP.md`).
 **Claude optional polish:** migrate remaining `getCompanies()`-only handlers in
 `screen.ts` / `geo.ts` list tools to `loadGraph()` for consistency (no behavior change).
 
-### A2. Light rate limiting (public DoS guard)
+### A2. ✅ DONE (off by default) — Light rate limiting
 
-**Why:** Graph tools are CPU-heavy; v1 is unauthenticated on purpose.
+Wired in `src/index.ts` + `src/ratelimit.ts`. Enable with Worker var/secret
+`RATE_LIMIT_ENABLED=1`. Keys by `mcp-session-id` or CF colo (never raw IP).
+Fail-open. Leave off unless abuse appears.
 
-**Scaffold (implement when abuse appears or before a launch push):**
-
+**Claude to enable on laptop:**
+```bash
+cd ~/projects/wafergraph-mcp
+npx wrangler secret put RATE_LIMIT_ENABLED   # enter: 1
+# or vars in dashboard; then npm run deploy
 ```
-src/ratelimit.ts
-  - checkRateLimit(env, key): Promise<{ ok: boolean; remaining: number }>
-  - Keys: `rl:YYYY-MM-DD-HH:<ip-hash-or-session>` in USAGE_KV
-  - Never store raw IPs — hash with a Worker secret salt if you ever key by IP
-  - Fail-open (if KV errors, allow the call)
-```
-
-Wire in `src/index.ts` around `/mcp` only; return JSON-RPC-friendly 429 text.
-Document in CLAUDE.md as optional and off-by-default via env flag
-`RATE_LIMIT_ENABLED=1`.
-
-**Do not** add auth in the same PR unless Jason asks — public dataset is intentional.
 
 ### A3. `resolve_ticker` is already the batch resolver
 
@@ -46,12 +39,15 @@ Document in CLAUDE.md as optional and off-by-default via env flag
 **Do not add a second `batch_resolve` tool.** If agents miss it, improve the tool description
 and mention it in the landing page tool list — don’t fork.
 
-### A4. Response `fields` / compact mode (context-size)
+### A4. ✅ PARTIAL — `get_company({ compact: true })`
 
-**Why:** Hub `get_company` edges are large even with EDGE_CAP.
+Shipped on `get_company`: tighter edge cap (25) + brief company payload.
+**Claude next:** add the same flag to `compare_companies` / `get_supply_chain` if agents still blow context.
 
-**Shape:** optional `compact: boolean` on heavy tools — omit `one_liner`/`sources`,
-return `briefRef` only. Default false for backward compatibility.
+### A4b. ✅ NEW TOOL — `find_substitutes`
+
+In `screen.ts`. Follow-up to chokepoints / single-source: same-niche taxonomy
+overlap ranking. Smoke case included. Not commercial interchangeability.
 
 ### A5. Freshness banner on every tool (optional)
 

@@ -45,6 +45,8 @@ export const TAXONOMY_SNAPSHOT_DATE = "2026-06-23";
 interface CacheEntry<T> {
   data: T;
   fetchedAt: number;
+  /** When set, serve this entry without re-fetching until this timestamp (ms). */
+  retryAfter?: number;
 }
 
 let companiesCache: CacheEntry<Company[]> | null = null;
@@ -54,8 +56,13 @@ let dealsCache: CacheEntry<Deal[]> | null = null;
 let companiesInflight: Promise<Company[]> | null = null;
 let dealsInflight: Promise<Deal[]> | null = null;
 
+/** After a failed refresh, wait this long before trying origin again. */
+const STALE_RETRY_BACKOFF_MS = 5 * 60 * 1000;
+
 function isFresh<T>(entry: CacheEntry<T> | null): entry is CacheEntry<T> {
-  return entry !== null && Date.now() - entry.fetchedAt < TTL_MS;
+  if (entry === null) return false;
+  if (entry.retryAfter && Date.now() < entry.retryAfter) return true;
+  return Date.now() - entry.fetchedAt < TTL_MS;
 }
 
 async function fetchJSON<T>(filename: string): Promise<T> {
@@ -96,8 +103,13 @@ async function loadCached<T>(
     } catch (err) {
       // Prefer stale-but-present data over taking every tool down on a
       // transient upstream/edge failure. Only throw when we have nothing.
+      // Bump retryAfter so we don't stampede origin on every subsequent call
+      // while the TTL remains expired.
       const stale = getCache();
-      if (stale) return stale.data;
+      if (stale) {
+        setCache({ ...stale, retryAfter: Date.now() + STALE_RETRY_BACKOFF_MS });
+        return stale.data;
+      }
       throw err;
     } finally {
       setInflight(null);

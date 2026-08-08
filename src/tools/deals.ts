@@ -29,7 +29,7 @@ import {
   resolvePartyCompany,
   type ToolRegistrar,
 } from "./shared";
-import { loadGraph, loadAll } from "./ctxload";
+import { loadAll } from "./ctxload";
 
 // ---- shared helpers --------------------------------------------------
 
@@ -84,12 +84,12 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
         "resolved company refs where a dataset id exists (and the raw party name where it does not), summary, " +
         "sources, and the per-deal confidence flag. Use get_deals or find_deals_by_company to find a deal id first.",
       inputSchema: {
-        id: z.string().describe("Deal id as returned by get_deals/find_deals_by_company, e.g. 'amd_xilinx_2020'."),
+        id: z.string().describe("Deal id as returned by get_deals/find_deals_by_company, e.g. 'amd_xilinx'."),
       },
     },
     async ({ id }) => {
       void recordUsage(ctx.env, "get_deal", ctx.isSelfTest());
-      const { companies, deals, graph } = await loadAll();
+      const { deals, graph } = await loadAll();
 
       const needle = id.trim().toLowerCase();
       const deal = deals.find((d) => d.id === id) ?? deals.find((d) => d.id.toLowerCase() === needle);

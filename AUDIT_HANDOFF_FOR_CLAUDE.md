@@ -34,7 +34,15 @@ Sous = separate chat. Do not duplicate.
 | Rate-limit scaffold (unwired) | `src/ratelimit.ts` |
 | Claude laptop runbook | `docs/CLAUDE_SESSION_CHECKLIST.md` + LOCAL_PICKUP + FEATURE_SCAFFOLD |
 
-`npm run typecheck` should pass after pull.
+`npm run typecheck` should pass after pull. Current package/MCP version: **1.3.0** (31 tools).
+
+### Latest loop (continuous cloud work)
+
+- Bugfix: `walkChain` no longer re-admits focal via 2-cycles; stale-cache failure backoff (5m)
+- Bugfix: `get_deal` schema example `amd_xilinx`; smoke asserts `get_supply_chain` focal exclusion
+- Feature: **`find_substitutes`** tool + smoke case
+- Feature: `get_company({ compact: true })`
+- Feature: optional `RATE_LIMIT_ENABLED=1` on `/mcp` (off by default)
 
 ---
 

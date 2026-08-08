@@ -79,9 +79,16 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
         "established/trust-checked data (see README field-discipline note).",
       inputSchema: {
         id: z.string().describe("Company id (snake_case, e.g. 'tsmc'), exact name, or ticker (e.g. 'TSM')."),
+        compact: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            "If true, return brief company refs (no full AllowedCompany / key_products / one_liner) and cap edges at 25 per side. Default false.",
+          ),
       },
     },
-    async ({ id }) => {
+    async ({ id, compact }) => {
       void recordUsage(ctx.env, "get_company", ctx.isSelfTest());
       const { graph } = await loadGraph();
       const company = resolveCompany(graph, id);
@@ -95,20 +102,28 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
       // suppliers), which made this response ~32KB — heavy for an LLM
       // context window. Cap each side generously and disclose the
       // truncation; most companies are far under the cap and unchanged.
-      // Deeper walks belong to get_supply_chain.
-      const EDGE_CAP = 80;
+      // Deeper walks belong to get_supply_chain. compact=true uses a tighter cap.
+      const EDGE_CAP = compact ? 25 : 80;
       const supplierIds = suppliersOf(graph, company.id);
       const customerIds = customersOf(graph, company.id);
       const suppliers = supplierIds.slice(0, EDGE_CAP).map((sid) => companyRef(graph, sid));
       const customers = customerIds.slice(0, EDGE_CAP).map((cid) => companyRef(graph, cid));
 
+      const companyPayload = compact
+        ? {
+            ...companyRef(graph, company.id),
+            segments: company.segments,
+          }
+        : toAllowedCompany(company);
+
       return jsonResult({
         data: {
-          company: toAllowedCompany(company),
+          company: companyPayload,
           suppliers,
           customers,
           supplier_count: supplierIds.length,
           customer_count: customerIds.length,
+          compact: !!compact,
           ...(supplierIds.length > EDGE_CAP || customerIds.length > EDGE_CAP
             ? { note: `Edge lists capped at ${EDGE_CAP} per side; supplier_count/customer_count carry the true totals. Use get_supply_chain for the full graph.` }
             : {}),
