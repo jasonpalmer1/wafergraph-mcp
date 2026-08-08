@@ -49,6 +49,12 @@ Shipped on `get_company`: tighter edge cap (25) + brief company payload.
 In `screen.ts`. Follow-up to chokepoints / single-source: same-niche taxonomy
 overlap ranking. Smoke case included. Not commercial interchangeability.
 
+### A4c. ✅ NEW TOOL — `explain_relationship`
+
+In `graphtools.ts`. One call: shortest paths (either direction) + shared
+suppliers/customers + direct-edge flags. Prefer over chaining
+`find_paths_between` + `compare_companies` for “how are A and B connected?”.
+
 ### A5. Freshness banner on every tool (optional)
 
 `get_dataset_stats` already exposes `live_cache_age_ms`. Optional next step:
@@ -78,8 +84,8 @@ Only after `docs/ready-fixes/worldcup-bracket.md` is applied and deployed:
 
 ## C. jasonwpalmer-com — after CSP/subscribe fixes
 
-1. **Build-log template** — `src/content/posts/_template.mdx` + note in CLAUDE.md
-   “Current focus” to add a post when a tool ships.
+1. **Build-log template** — see `docs/ready-fixes/jasonwpalmer-com-build-log-template.md`
+   (copy into `~/projects/jasonwpalmer-com`).
 2. **tools.ts sync checklist** — when wafergraph-mcp or worldcup changes,
    update the matching card in `src/data/tools.ts` (counts, blurb, status).
 3. **Subscribe rate-limit** — see ready-fix; then optional Turnstile.

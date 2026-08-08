@@ -73,6 +73,7 @@ const CASES = {
   find_single_source_dependencies: { segment: "foundry" },
   rank_by_connectivity: { metric: "customers", limit: 10 },
   find_common_suppliers: { company_ids: ["nvidia", "amd", "intel"] },
+  explain_relationship: { from: "nvidia", to: "tsmc", max_depth: 3, path_limit: 5 },
 
   get_deal: { id: "amd_xilinx" },
   find_deals_by_company: { company: "amd" },
@@ -95,6 +96,8 @@ const ASSERTS = {
   get_dataset_stats: (d) => typeof d?.counts?.companies === "number" && d.counts.companies > 0,
   simulate_disruption: (d) => d?.removed?.criterion === "company",
   find_substitutes: (d) => Array.isArray(d?.results) && d?.focal?.id,
+  explain_relationship: (d) =>
+    d?.from?.id && d?.to?.id && Array.isArray(d?.paths) && typeof d?.summary === "string",
 };
 
 function preview(result, toolName) {

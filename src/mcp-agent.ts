@@ -15,7 +15,7 @@ import { registerDealTools } from "./tools/deals";
 type State = Record<string, never>;
 
 export class WafergraphMCP extends McpAgent<Env, State, {}> {
-  server = new McpServer({ name: "wafergraph-mcp", version: "1.3.0" });
+  server = new McpServer({ name: "wafergraph-mcp", version: "1.3.1" });
   initialState: State = {};
 
   // Set once per session from the initialize handshake, then applied to every

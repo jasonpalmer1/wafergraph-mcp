@@ -695,4 +695,123 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       });
     },
   );
+
+  // ---- 6. explain_relationship ==========================================
+  // One-shot "how are these two connected?" for agents that currently chain
+  // find_paths_between + compare_companies. Keeps depth/path caps tight.
+  server.registerTool(
+    "explain_relationship",
+    {
+      title: "Explain relationship between two companies",
+      description:
+        "Single-call overview of how two companies relate in the documented supply graph: shortest paths (either " +
+        "direction, up to 3 hops), shared suppliers, and shared customers. Prefer this over separately calling " +
+        "find_paths_between and compare_companies when the question is just 'how are A and B connected?'.",
+      inputSchema: {
+        from: z.string().describe("First company id, name, or ticker."),
+        to: z.string().describe("Second company id, name, or ticker."),
+        max_depth: z.number().int().min(1).max(3).optional().default(3).describe("Max path hops (default 3, hard max 3)."),
+        path_limit: z.number().int().min(1).max(10).optional().default(5).describe("Max paths to return (default 5)."),
+      },
+    },
+    async ({ from, to, max_depth, path_limit }) => {
+      void recordUsage(ctx.env, "explain_relationship", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
+      const a = resolveCompany(graph, from);
+      const b = resolveCompany(graph, to);
+      if (!a || !b) {
+        return errorResult("Could not resolve both companies.", {
+          from: a ? companyRef(graph, a.id) : null,
+          to: b ? companyRef(graph, b.id) : null,
+          unresolved: [!a ? from : null, !b ? to : null].filter(Boolean),
+          hint: "Use search_companies or resolve_ticker first.",
+          suggestions_from: a ? [] : suggestCompanies(companies, from),
+          suggestions_to: b ? [] : suggestCompanies(companies, to),
+        });
+      }
+      if (a.id === b.id) {
+        return errorResult("Both inputs resolved to the same company — need two distinct companies.");
+      }
+
+      const depth = Math.min(max_depth ?? 3, 3);
+      const pathCap = Math.min(path_limit ?? 5, 10);
+      const EXPLORATION_BUDGET = 12000;
+
+      function collectPaths(srcId: string, dstId: string, mode: "down" | "up"): string[][] {
+        const results: string[][] = [];
+        let explored = 0;
+        const queue: Array<{ node: string; path: string[] }> = [{ node: srcId, path: [srcId] }];
+        let qi = 0;
+        while (qi < queue.length && results.length < pathCap && explored < EXPLORATION_BUDGET) {
+          const { node, path } = queue[qi++]!;
+          explored++;
+          if (path.length - 1 >= depth) continue;
+          const neighbors = mode === "down" ? customersOf(graph, node) : suppliersOf(graph, node);
+          for (const next of neighbors) {
+            if (results.length >= pathCap) break;
+            if (path.includes(next)) continue;
+            const nextPath = [...path, next];
+            if (next === dstId) {
+              results.push(nextPath);
+              continue;
+            }
+            if (nextPath.length - 1 < depth) queue.push({ node: next, path: nextPath });
+          }
+        }
+        return results;
+      }
+
+      const down = collectPaths(a.id, b.id, "down").map((ids) => ({
+        direction: "downstream" as const,
+        length: ids.length - 1,
+        companies: ids.map((id) => companyRef(graph, id)),
+        summary: `${a.name} supplies toward ${b.name} in ${ids.length - 1} hop(s).`,
+      }));
+      const up = collectPaths(a.id, b.id, "up").map((ids) => ({
+        direction: "upstream" as const,
+        length: ids.length - 1,
+        companies: ids.map((id) => companyRef(graph, id)),
+        summary: `${a.name} depends toward ${b.name} in ${ids.length - 1} hop(s).`,
+      }));
+      const paths = [...down, ...up].sort((x, y) => x.length - y.length).slice(0, pathCap);
+
+      const aSup = new Set(suppliersOf(graph, a.id));
+      const bSup = new Set(suppliersOf(graph, b.id));
+      const aCust = new Set(customersOf(graph, a.id));
+      const bCust = new Set(customersOf(graph, b.id));
+      const shared_suppliers = [...aSup].filter((id) => bSup.has(id)).map((id) => companyRef(graph, id));
+      const shared_customers = [...aCust].filter((id) => bCust.has(id)).map((id) => companyRef(graph, id));
+      const direct =
+        aCust.has(b.id) || aSup.has(b.id)
+          ? {
+              a_supplies_b: aCust.has(b.id),
+              a_depends_on_b: aSup.has(b.id),
+            }
+          : { a_supplies_b: false, a_depends_on_b: false };
+
+      return jsonResult({
+        data: {
+          from: companyRef(graph, a.id),
+          to: companyRef(graph, b.id),
+          direct_edge: direct,
+          paths,
+          path_count: paths.length,
+          shared_suppliers,
+          shared_customers,
+          shared_supplier_count: shared_suppliers.length,
+          shared_customer_count: shared_customers.length,
+          max_depth: depth,
+          summary:
+            paths.length === 0 && !direct.a_supplies_b && !direct.a_depends_on_b
+              ? `No documented path within ${depth} hops between ${a.name} and ${b.name}; they share ${shared_suppliers.length} supplier(s) and ${shared_customers.length} customer(s).`
+              : `${a.name} ↔ ${b.name}: ${paths.length} path(s) within ${depth} hops; ${shared_suppliers.length} shared supplier(s); ${shared_customers.length} shared customer(s).`,
+          edge_coverage: edgeCoverage(companies),
+          caveat:
+            "Documented edges only — absence of a path is not proof of no commercial relationship. See edge_coverage.",
+        },
+        attribution: attributionGeneric(),
+        links: LINKS,
+      });
+    },
+  );
 };
