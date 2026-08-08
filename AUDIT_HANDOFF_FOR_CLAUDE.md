@@ -37,6 +37,9 @@ Sous = separate chat. Do not duplicate.
 `npm run typecheck` should pass after pull. Current package/MCP version: **1.3.1** (32 tools).
 
 ### Latest loop (continuous cloud work)
+- Feature: compare_companies({ compact: true })
+- Scaffold: worldcup-bracket-results-provider.md (after CRITICAL security)
+
 
 - Bugfix: `walkChain` no longer re-admits focal via 2-cycles; stale-cache failure backoff (5m)
 - Bugfix: `get_deal` schema example `amd_xilinx`; smoke asserts `get_supply_chain` focal exclusion
