@@ -76,7 +76,7 @@ export const registerMetaTools: ToolRegistrar = (server, ctx) => {
       title: "Recommend which tools to call",
       description:
         "Given a short natural-language intent about semiconductor supply-chain research, return the best primary " +
-        "wafergraph MCP tool and optional follow-ups. Call this when unsure which of the 30+ tools to use — cheaper " +
+        "wafergraph MCP tool and optional follow-ups. Call this when unsure which of the 34 tools to use — cheaper " +
         "than trial-and-error. Does not run the other tools; it only routes.",
       inputSchema: {
         intent: z
