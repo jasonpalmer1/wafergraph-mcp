@@ -1,6 +1,8 @@
 // Human landing page at "/". One screen: what this is, how to install it,
 // and a link back to wafergraph.com. `origin` is the live request origin so
 // the install snippets always show the real deployed URL.
+import { PACKAGE_VERSION, TOOL_COUNT } from "./version";
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (ch) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!,
@@ -9,6 +11,8 @@ function escapeHtml(s: string): string {
 
 export function renderLanding(origin: string): string {
   const mcpUrl = escapeHtml(`${origin}/mcp`);
+  const toolCount = TOOL_COUNT;
+  const version = escapeHtml(PACKAGE_VERSION);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -141,8 +145,8 @@ export function renderLanding(origin: string): string {
   <h1>wafergraph MCP</h1>
   <p class="lede">
     Read-only access to wafergraph.com's semiconductor &amp; AI supply-chain dataset — hundreds of companies across
-    12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as 35 tools any MCP-speaking
-    AI agent can call directly.
+    12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as ${toolCount} tools any MCP-speaking
+    AI agent can call directly (v${version}).
   </p>
 
   <h2>Tools</h2>

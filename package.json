@@ -8,7 +8,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "types": "wrangler types",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:versions": "node scripts/check-version-sync.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

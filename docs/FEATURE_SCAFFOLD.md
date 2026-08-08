@@ -82,6 +82,18 @@ ever serves real `taxonomy.json`, flip `getTaxonomy()` in `data.ts` to the same
 live-fetch path as companies/deals and delete the snapshot ritual. Until then:
 keep `scripts/refresh-data.sh`.
 
+### A7. Scaffold — `compare_segments` (not shipped)
+
+Side-by-side two taxonomy segments: company counts, HQ country HHI, priced-cap
+coverage, top leaders, edge density. Agents currently chain `get_segment_leaders`
++ `get_country_exposure` twice. Implement in `geo.ts` when appetite remains;
+register smoke case + extend `recommend_tools` ROUTING.
+
+### A8. ✅ Org — version sync helper
+
+`src/version.ts` (`PACKAGE_VERSION`, `TOOL_COUNT`), landing uses them,
+`npm run check:versions` asserts package.json / server.json / version.ts agree.
+
 ---
 
 ## B. worldcup-bracket — after CRITICAL security patches
