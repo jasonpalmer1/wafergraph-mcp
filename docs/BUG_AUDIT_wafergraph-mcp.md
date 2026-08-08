@@ -16,7 +16,7 @@ None. No RCE, SSRF, auth bypass, or exploitable KV/HTML injection found for curr
 
 ## High
 
-### H1. `filter_companies`: segment + subsegment filters are independent
+### H1. ✅ FIXED — `filter_companies`: segment + subsegment filters are independent
 
 - **Where:** `src/tools/screen.ts` — `filter_companies` handler (~81–82)
 - **What's wrong:** Segment and subsegment checked with separate `.some()` calls. A multi-segment company matches `segment=A` + `subsegment=B` even when `B` is not under `A` on the same membership.
@@ -24,14 +24,14 @@ None. No RCE, SSRF, auth bypass, or exploitable KV/HTML injection found for curr
 - **Fix:** When both filters set, require one membership:  
   `c.segments.some(s => s.segment === seg && s.subsegment === sub)`.
 
-### H2. `find_paths_between`: DFS + result cap can miss shorter paths
+### H2. ✅ FIXED — `find_paths_between`: DFS + result cap can miss shorter paths
 
 - **Where:** `src/tools/graphtools.ts` — inner `search()` (~146–173)
 - **What's wrong:** Depth-first search stops at `limit`. Neighbor order is arbitrary. Post-sort by length cannot recover paths never collected. A direct edge can be omitted if longer paths fill the cap first.
 - **Why it matters:** Tool implies shortest-first usefulness; default limit 10 / depth 3 can omit the documented shortest path.
 - **Fix:** BFS (or iterative deepening) by hop length; collect up to `limit` in length order; keep exploration budget separate.
 
-### H3. `simulate_disruption`: schema says ticker; code does not resolve tickers
+### H3. ✅ FIXED — `simulate_disruption`: schema says ticker; code does not resolve tickers
 
 - **Where:** `src/tools/graphtools.ts` — `simulate_disruption` (~247–278)
 - **What's wrong:** `company_id` describe text: “id, name, or ticker”. Resolution uses `findCompany()` only. Sibling tools use `resolveCompany()` with ticker map.
@@ -42,7 +42,7 @@ None. No RCE, SSRF, auth bypass, or exploitable KV/HTML injection found for curr
 
 ## Medium
 
-### M1. Stale in-memory cache discarded on refresh failure
+### M1. ✅ FIXED — Stale in-memory cache discarded on refresh failure
 
 - **Where:** `src/data.ts` — `getCompanies` / `getDeals`
 - **What's wrong:** After TTL expiry, failed fetch throws even if a previous cache entry exists.
