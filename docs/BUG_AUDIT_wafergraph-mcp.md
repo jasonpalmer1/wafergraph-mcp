@@ -48,43 +48,43 @@ None. No RCE, SSRF, auth bypass, or exploitable KV/HTML injection found for curr
 - **What's wrong:** After TTL expiry, failed fetch throws even if a previous cache entry exists.
 - **Fix:** On fetch failure, return stale cache if present (optionally flag `stale: true`); throw only when empty.
 
-### M2. No in-flight fetch coalescing
+### M2. ✅ FIXED — No in-flight fetch coalescing
 
 - **Where:** `src/data.ts`
 - **What's wrong:** Concurrent past-TTL callers each hit origin.
 - **Fix:** Module-level `inflight` promise shared until settled.
 
-### M3. Hardcoded “565 companies” is stale
+### M3. ✅ FIXED — Hardcoded “565 companies” is stale
 
 - **Where:** `src/mcp-agent.ts`, `src/tools/screen.ts`, `src/tools/geo.ts`, `src/landing.ts`, `CLAUDE.md`, tool descriptions
 - **What's wrong:** Live `companies.json` ~615.
 - **Fix:** Soften copy (“hundreds of companies”) or use live `companies.length` in responses; stop hardcoding in descriptions.
 
-### M4. Country alias handling inconsistent
+### M4. ✅ FIXED — Country alias handling inconsistent
 
 - **Where:** Aliases in `src/tools/geo.ts` (`COUNTRY_ALIASES`); absent in `filter_companies`, `search_companies`, `get_country_exposure`, `simulate_disruption`, etc.
 - **What's wrong:** `get_country_profile("USA")` works; `filter_companies({ country: "USA" })` empty.
 - **Fix:** Shared `normalizeCountryQuery` / `resolveCountry` everywhere country is input.
 
-### M5. `compare_companies` promises unique counterparties
+### M5. ✅ FIXED — `compare_companies` promises unique counterparties
 
 - **Where:** `src/mcp-agent.ts` description vs payload (~330–385)
 - **What's wrong:** Description mentions shared *and* unique; payload only `shared_suppliers` / `shared_customers`.
 - **Fix:** Add unique lists or shrink the description.
 
-### M6. Portfolio segment `share` can exceed 100% in aggregate
+### M6. ✅ FIXED (documented) — Portfolio segment `share` can exceed 100% in aggregate
 
 - **Where:** `src/mcp-agent.ts` — `analyze_portfolio_exposure` `tally()` with `flatMap` over segments
 - **What's wrong:** Multi-segment holdings increment multiple buckets; `share = count / matched.length`.
 - **Fix:** Document as “% of holdings that touch this segment”, or weight by 1/|segments|.
 
-### M7. `rank_by_market_cap` can return unpriced companies
+### M7. ✅ FIXED — `rank_by_market_cap` can return unpriced companies
 
 - **Where:** `src/tools/screen.ts` (~407–408)
 - **What's wrong:** Null caps sort last but still fill `limit`.
 - **Fix:** Rank only priced companies (coverage already returned).
 
-### M8. `find_common_suppliers` silent input truncation
+### M8. ✅ FIXED — `find_common_suppliers` silent input truncation
 
 - **Where:** `src/tools/graphtools.ts` — `INPUT_CAP = 15` (~673–679)
 - **What's wrong:** Analysis may use full segment; response lists 15 companies with no truncation note.
@@ -96,7 +96,7 @@ None. No RCE, SSRF, auth bypass, or exploitable KV/HTML injection found for curr
 - **What's wrong:** Shared `tier` map; firm that is both supplier and customer of focal is only upstream; downstream walk skips it.
 - **Fix:** Dual membership / independent walks, or document upstream-preferring semantics.
 
-### M10. `await recordUsage(...)` on every tool call
+### M10. ✅ FIXED — `await recordUsage(...)` on every tool call
 
 - **Where:** All tools in `mcp-agent.ts` and `src/tools/*`
 - **What's wrong:** Telemetry awaited before work; session start correctly uses `void`. KV latency becomes MCP latency.
