@@ -90,7 +90,7 @@ None. No RCE, SSRF, auth bypass, or exploitable KV/HTML injection found for curr
 - **What's wrong:** Analysis may use full segment; response lists 15 companies with no truncation note.
 - **Fix:** Add note when truncated (same pattern as edge caps).
 
-### M9. `walkChain(..., "both")` upstream-wins on two-way ties
+### M9. ✅ FIXED — `walkChain(..., "both")` upstream-wins on two-way ties
 
 - **Where:** `src/graph.ts` (~101–130)
 - **What's wrong:** Shared `tier` map; firm that is both supplier and customer of focal is only upstream; downstream walk skips it.
@@ -102,7 +102,7 @@ None. No RCE, SSRF, auth bypass, or exploitable KV/HTML injection found for curr
 - **What's wrong:** Telemetry awaited before work; session start correctly uses `void`. KV latency becomes MCP latency.
 - **Fix:** `void recordUsage(...)`.
 
-### M11. `get_deals` segment filter ignores null-id parties
+### M11. ✅ FIXED — `get_deals` segment filter ignores null-id parties
 
 - **Where:** `src/mcp-agent.ts` `get_deals` vs `src/tools/deals.ts` name-fallback
 - **What's wrong:** Segment match requires `p.id` + `byId.get`; null-id parties skipped. Other deal tools name-match.
