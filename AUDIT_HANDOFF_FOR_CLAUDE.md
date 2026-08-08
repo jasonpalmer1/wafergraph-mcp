@@ -34,7 +34,7 @@ Sous = separate chat. Do not duplicate.
 | Rate-limit scaffold (unwired) | `src/ratelimit.ts` |
 | Claude laptop runbook | `docs/CLAUDE_SESSION_CHECKLIST.md` + LOCAL_PICKUP + FEATURE_SCAFFOLD |
 
-`npm run typecheck` should pass after pull. Current package/MCP version: **1.3.6** (36 tools).
+`npm run typecheck` should pass after pull. Current package/MCP version: **1.3.7** (37 tools).
 
 ### Latest loop (continuous cloud work)
 
@@ -71,11 +71,11 @@ Sous = separate chat. Do not duplicate.
 - M3 softened “565” copy
 - M5–M8 compare description, portfolio note, priced rank, truncation note
 - M10 `void recordUsage`
-- HEAD `/`; McpServer version synced with package (1.3.6) via `src/version.ts` + `npm run check:versions`
-- `get_company` edges sorted by market cap before cap; freshness includes per-cache ages + `stale`
-- `get_deals` type/sort_by + accurate deal-corpus copy; compare_companies clearer duplicate-input errors
+- HEAD `/`; McpServer version synced with package (1.3.7) via `src/version.ts` + `npm run check:versions`
+- `find_common_customers`; `find_paths_between` either-mode collects 2× per side before merge
+- `get_company` edge sort; richer freshness; `get_deals` type/sort_by
 - `compare_segments`; `diff_supply_chains`; `list_stale_companies`; supply-chain compact
-- README synced to 36 tools
+- README synced to current tool count
 
 ### Efficiency / org
 - `buildGraph` identity-cached against companies array

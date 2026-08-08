@@ -165,7 +165,7 @@ export function renderLanding(origin: string): string {
     <li><code>diff_supply_chains</code> <span>— shared vs unique 1-hop suppliers/customers for two companies</span></li>
     <li><code>simulate_disruption</code> <span>— blast radius if a company, country or segment goes offline</span></li>
     <li><code>find_single_source_dependencies</code> <span>— buyers with exactly one documented supplier</span></li>
-    <li><code>find_common_suppliers</code> <span>— shared upstream across a set of companies</span></li>
+    <li><code>find_common_suppliers</code> / <code>find_common_customers</code> <span>— shared upstream/downstream across a set</span></li>
     <li><code>find_chokepoints</code> / <code>rank_by_connectivity</code> <span>— who everything routes through</span></li>
     <li><code>get_upstream_concentration</code> <span>— one company's supplier mix, with an HHI index</span></li>
     <li><code>list_countries</code> / <code>get_country_profile</code> / <code>compare_countries</code> <span>— geography</span></li>

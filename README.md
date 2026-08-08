@@ -2,7 +2,7 @@
 
 A remote MCP server exposing [wafergraph.com](https://wafergraph.com)'s semiconductor & AI
 supply-chain dataset — hundreds of companies across 12 segments, the supplier/customer graph, and a
-~74-deal curated corpus — as **36** read-only tools any MCP-speaking AI agent can call directly.
+~74-deal curated corpus — as **37** read-only tools any MCP-speaking AI agent can call directly.
 
 No auth, no cost, read-only. Streamable HTTP transport at `/mcp`. Human landing page at `/`.
 
@@ -56,6 +56,7 @@ Live: **https://mcp.wafergraph.com**
 | `find_single_source_dependencies({segment?, country?})` | Customer/subsegment pairs with exactly one documented supplier. |
 | `rank_by_connectivity({metric?, limit?})` | Rank by documented degree (documentation density, not criticality). |
 | `find_common_suppliers({company_ids? \| segment?})` | Suppliers shared across a set of companies. |
+| `find_common_customers({company_ids? \| segment?})` | Customers shared across a set of companies. |
 
 ### Deals & dataset
 

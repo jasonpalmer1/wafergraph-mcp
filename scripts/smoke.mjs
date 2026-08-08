@@ -81,6 +81,7 @@ const CASES = {
   find_single_source_dependencies: { segment: "foundry" },
   rank_by_connectivity: { metric: "customers", limit: 10 },
   find_common_suppliers: { company_ids: ["nvidia", "amd", "intel"] },
+  find_common_customers: { company_ids: ["tsmc", "samsung", "globalfoundries"] },
   explain_relationship: { from: "nvidia", to: "tsmc", max_depth: 3, path_limit: 5 },
   diff_supply_chains: { a: "nvidia", b: "amd", side: "both", limit: 10 },
 
@@ -111,7 +112,7 @@ const ASSERTS = {
     !d.tiers.some((t) => t.tier !== 0 && (t.companies ?? []).some((c) => c.id === "nvidia")),
   resolve_ticker: (d) => Array.isArray(d?.results) && typeof d?.matched_count === "number",
   rank_by_market_cap: (d) => Array.isArray(d?.results) && d.results.every((r) => typeof r.market_cap_usd_b === "number"),
-  find_paths_between: (d) => Array.isArray(d?.paths),
+  find_paths_between: (d) => Array.isArray(d?.paths) && typeof d?.total_collected === "number",
   get_deal: (d) => typeof d?.id === "string" && d.id.includes("amd"),
   get_dataset_stats: (d) => typeof d?.counts?.companies === "number" && d.counts.companies > 0,
   list_stale_companies: (d) => Array.isArray(d?.results) && typeof d?.matching_total === "number",
@@ -119,6 +120,7 @@ const ASSERTS = {
     Array.isArray(d?.segments) &&
     d.segments.length >= 2 &&
     typeof d.segments[0]?.country_hhi === "number",
+  find_common_customers: (d) => Array.isArray(d?.results) && typeof d?.input_company_count === "number",
   simulate_disruption: (d) => d?.removed?.criterion === "company",
   find_substitutes: (d) => Array.isArray(d?.results) && d?.focal?.id,
   explain_relationship: (d) =>

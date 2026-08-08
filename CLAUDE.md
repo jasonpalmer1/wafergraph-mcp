@@ -1,7 +1,7 @@
 # wafergraph-mcp — Remote MCP server for wafergraph.com's dataset
 
 Read-only Cloudflare Workers MCP server exposing wafergraph.com's semiconductor & AI
-supply-chain dataset (hundreds of companies, 12 segments, M&A deals, supplier/customer graph) as 36
+supply-chain dataset (hundreds of companies, 12 segments, M&A deals, supplier/customer graph) as 37
 tools for AI agents. No auth (v1, public data). Streamable HTTP transport at `/mcp`, human
 landing page at `/`. Independent project — not an official wafergraph product, but built to be
 a good-faith front door to it (every response links back to wafergraph.com and its paid report).
@@ -18,7 +18,7 @@ Live: **https://mcp.wafergraph.com**
 - `src/tools/ctxload.ts` — `loadGraph()` / `loadAll()` (preferred entry for tool handlers; graph is identity-cached).
 - `src/tools/screen.ts` — screening & discovery: `filter_companies`, `list_subsegments`, `get_subsegment`, `find_similar_companies`, `find_substitutes`, `rank_by_market_cap`, `resolve_ticker`.
 - `src/tools/geo.ts` — geography & structure: `list_countries`, `get_country_profile`, `compare_countries`, `get_segment_leaders`, `compare_segments`, `get_upstream_concentration`. Country is HQ, not fab location; every tool here says so.
-- `src/tools/graphtools.ts` — graph analysis: `find_paths_between`, `explain_relationship`, `diff_supply_chains`, `simulate_disruption`, `find_single_source_dependencies`, `rank_by_connectivity`, `find_common_suppliers`.
+- `src/tools/graphtools.ts` — graph analysis: `find_paths_between`, `explain_relationship`, `diff_supply_chains`, `simulate_disruption`, `find_single_source_dependencies`, `rank_by_connectivity`, `find_common_suppliers`, `find_common_customers`.
 - `src/tools/deals.ts` — deals & dataset: `get_deal`, `find_deals_by_company`, `get_ma_activity_summary`, `find_consolidation_hotspots`, `list_stale_companies`, `get_dataset_stats`.
 - `src/tools/meta.ts` — `recommend_tools` (intent → tool routing for agents).
 - `src/ratelimit.ts` — optional KV rate-limit; wired in `src/index.ts` when Worker var `RATE_LIMIT_ENABLED=1`.

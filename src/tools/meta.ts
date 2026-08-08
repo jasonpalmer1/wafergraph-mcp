@@ -30,7 +30,12 @@ const ROUTING: Array<{
   {
     intent: "How do two companies' suppliers or customers overlap?",
     primary: "diff_supply_chains",
-    also: ["explain_relationship", "find_common_suppliers", "compare_companies"],
+    also: ["explain_relationship", "find_common_suppliers", "find_common_customers", "compare_companies"],
+  },
+  {
+    intent: "Who buys from several of these companies?",
+    primary: "find_common_customers",
+    also: ["find_common_suppliers", "diff_supply_chains"],
   },
   {
     intent: "Screen / filter the universe",
@@ -87,7 +92,7 @@ export const registerMetaTools: ToolRegistrar = (server, ctx) => {
       title: "Recommend which tools to call",
       description:
         "Given a short natural-language intent about semiconductor supply-chain research, return the best primary " +
-        "wafergraph MCP tool and optional follow-ups. Call this when unsure which of the 36 tools to use — cheaper " +
+        "wafergraph MCP tool and optional follow-ups. Call this when unsure which of the 37 tools to use — cheaper " +
         "than trial-and-error. Does not run the other tools; it only routes.",
       inputSchema: {
         intent: z

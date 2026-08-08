@@ -130,25 +130,28 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       const depth = max_depth ?? 3;
       const cap = limit ?? 10;
       const EXPLORATION_BUDGET = 20000;
+      // When searching both directions, collect more per side before the final
+      // shortest-first merge so `either` doesn't under-fill the returned page.
+      const perSideCap = direction === "either" ? Math.min(cap * 2, 50) : cap;
 
-      // BFS by hop length so the first `cap` paths collected are the shortest.
+      // BFS by hop length so the first paths collected are the shortest.
       // (DFS + early stop could fill the cap with longer paths and miss a
       // direct edge that would have sorted first after the fact.)
-      function search(mode: "down" | "up"): { paths: string[][]; capped: boolean } {
+      function search(mode: "down" | "up"): { paths: string[][]; budgetHit: boolean; resultCapHit: boolean } {
         const results: string[][] = [];
         let explored = 0;
         // Index cursor instead of shift() — O(1) pop on large frontiers.
         const queue: Array<{ node: string; path: string[] }> = [{ node: src.id, path: [src.id] }];
         let qi = 0;
 
-        while (qi < queue.length && results.length < cap && explored < EXPLORATION_BUDGET) {
+        while (qi < queue.length && results.length < perSideCap && explored < EXPLORATION_BUDGET) {
           const { node, path } = queue[qi++]!;
           explored++;
           const depthSoFar = path.length - 1;
           if (depthSoFar >= depth) continue;
           const neighbors = mode === "down" ? customersOf(graph, node) : suppliersOf(graph, node);
           for (const next of neighbors) {
-            if (results.length >= cap || explored >= EXPLORATION_BUDGET) break;
+            if (results.length >= perSideCap || explored >= EXPLORATION_BUDGET) break;
             if (path.includes(next)) continue; // no cycles
             const nextPath = [...path, next];
             if (next === dst.id) {
@@ -160,25 +163,33 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
             }
           }
         }
-        return { paths: results, capped: explored >= EXPLORATION_BUDGET || results.length >= cap };
+        return {
+          paths: results,
+          budgetHit: explored >= EXPLORATION_BUDGET,
+          resultCapHit: results.length >= perSideCap,
+        };
       }
 
       const found: Array<{ ids: string[]; edgeDirection: "downstream" | "upstream" }> = [];
-      let searchCapped = false;
+      let budgetHit = false;
+      let sideCapHit = false;
       if (direction === "downstream" || direction === "either") {
         const r = search("down");
-        searchCapped = searchCapped || r.capped;
+        budgetHit = budgetHit || r.budgetHit;
+        sideCapHit = sideCapHit || r.resultCapHit;
         for (const p of r.paths) found.push({ ids: p, edgeDirection: "downstream" });
       }
       if (direction === "upstream" || direction === "either") {
         const r = search("up");
-        searchCapped = searchCapped || r.capped;
+        budgetHit = budgetHit || r.budgetHit;
+        sideCapHit = sideCapHit || r.resultCapHit;
         for (const p of r.paths) found.push({ ids: p, edgeDirection: "upstream" });
       }
 
       found.sort((a, b) => a.ids.length - b.ids.length);
       const totalFound = found.length;
       const sliced = found.slice(0, cap);
+      const searchCapped = budgetHit || sideCapHit || totalFound > cap;
 
       const paths = sliced.map((p) => {
         const hops = p.ids.length - 1;
@@ -203,9 +214,15 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
           direction_searched: direction,
           max_depth: depth,
           paths,
+          total_collected: totalFound,
           total: totalFound,
           returned: paths.length,
           search_capped: searchCapped,
+          ...(totalFound > cap
+            ? {
+                note: `Returning the ${cap} shortest of ${totalFound} collected path(s). search_capped=true means more may exist beyond the per-side/exploration budget.`,
+              }
+            : {}),
           ...(paths.length === 0
             ? {
                 message:
@@ -708,6 +725,136 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
             `${noSuppliers.length} of ${inputCompanies.length} input companies have zero documented suppliers, so a ` +
             "low overlap number can mean either genuinely few shared suppliers or thin documentation — check " +
             "input_companies_with_no_documented_suppliers_list before concluding low correlation.",
+          edge_coverage: edgeCoverage(companies),
+        },
+        attribution: attributionGeneric(),
+        links: LINKS,
+      });
+    },
+  );
+
+  // ==== 5b. find_common_customers ========================================
+  // Downstream twin of find_common_suppliers — same input contract, flipped edges.
+  server.registerTool(
+    "find_common_customers",
+    {
+      title: "Find common customers",
+      description:
+        "The shared-downstream question over a set of companies: given 2-15 company ids/tickers, or a segment id, " +
+        "rank customers by how many of the input companies documentedly sell to them. Twin of find_common_suppliers " +
+        "for the customer side. Also reports how many input companies had no documented customers.",
+      inputSchema: {
+        company_ids: z
+          .array(z.string())
+          .min(2)
+          .max(15)
+          .optional()
+          .describe("2-15 company ids, names, or tickers. Exactly one of company_ids/segment is required."),
+        segment: z.string().optional().describe("Use every company in this taxonomy segment id instead of an explicit list (see get_segments)."),
+        limit: z.number().int().min(1).max(100).optional().default(20).describe("Max number of ranked customers to return (1-100, default 20)."),
+      },
+    },
+    async ({ company_ids, segment, limit }) => {
+      void recordUsage(ctx.env, "find_common_customers", ctx.isSelfTest());
+      const hasIds = company_ids !== undefined && company_ids.length > 0;
+      const hasSegment = segment !== undefined && segment.trim() !== "";
+      if (hasIds === hasSegment) {
+        return errorResult("Exactly one of company_ids or segment is required.", {
+          received: { company_ids: company_ids ?? null, segment: segment ?? null },
+        });
+      }
+
+      const { companies, graph } = await loadGraph();
+
+      let inputCompanies: Company[];
+      let unresolved: string[] = [];
+      let inputMode: "company_ids" | "segment";
+
+      if (hasSegment) {
+        const seg = segment!.trim().toLowerCase();
+        inputCompanies = companies.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg));
+        if (inputCompanies.length < 2) {
+          return errorResult(`Segment "${segment}" has fewer than 2 companies — need at least 2 to find shared customers.`, {
+            hint: "Use get_segments for the list of valid segment ids and their company counts.",
+          });
+        }
+        inputMode = "segment";
+      } else {
+        const resolved: Company[] = [];
+        for (const raw of company_ids!) {
+          const c = resolveCompany(graph, raw);
+          if (c && !resolved.some((r) => r.id === c.id)) resolved.push(c);
+          else if (!c) unresolved.push(raw);
+        }
+        if (resolved.length < 2) {
+          return errorResult("Need at least 2 resolvable companies to find shared customers.", {
+            unresolved,
+            hint: "Use search_companies to find valid ids, names, or tickers.",
+          });
+        }
+        inputCompanies = resolved;
+        inputMode = "company_ids";
+      }
+
+      const noCustomers = inputCompanies.filter((c) => customersOf(graph, c.id).length === 0);
+
+      const tally = new Map<string, Set<string>>(); // customerId -> Set of selling input company ids
+      for (const c of inputCompanies) {
+        for (const cid of customersOf(graph, c.id)) {
+          if (!tally.has(cid)) tally.set(cid, new Set());
+          tally.get(cid)!.add(c.id);
+        }
+      }
+
+      const SERVED_LIST_CAP = 10;
+      const results = [...tally.entries()]
+        .map(([cid, sellerSet]) => {
+          const sellerIds = [...sellerSet];
+          return {
+            ...companyRef(graph, cid),
+            served_by_count: sellerSet.size,
+            served_by_share: `${sellerSet.size}/${inputCompanies.length}`,
+            served_by_companies: sellerIds.slice(0, SERVED_LIST_CAP).map((id) => companyRef(graph, id)),
+            served_by_companies_returned: Math.min(sellerIds.length, SERVED_LIST_CAP),
+            ...(sellerIds.length > SERVED_LIST_CAP ? { served_by_companies_truncated: true as const } : {}),
+          };
+        })
+        .sort((a, b) => b.served_by_count - a.served_by_count);
+
+      const cap = limit ?? 20;
+      const sliced = results.slice(0, cap);
+      const INPUT_CAP = 15;
+      const inputListed = inputCompanies.slice(0, INPUT_CAP).map((c) => companyRef(graph, c.id));
+
+      return jsonResult({
+        data: {
+          input_mode: inputMode,
+          input_companies: inputListed,
+          input_company_count: inputCompanies.length,
+          ...(inputCompanies.length > INPUT_CAP
+            ? {
+                input_companies_truncated: true,
+                input_companies_listed: inputListed.length,
+                note:
+                  `input_companies lists the first ${INPUT_CAP} of ${inputCompanies.length} companies analyzed; ` +
+                  "the overlap tally uses the full input set (see input_company_count).",
+              }
+            : {}),
+          ...(unresolved.length ? { unresolved } : {}),
+          input_companies_with_no_documented_customers: noCustomers.length,
+          input_companies_with_no_documented_customers_list: noCustomers
+            .slice(0, INPUT_CAP)
+            .map((c) => companyRef(graph, c.id)),
+          results: sliced,
+          total: results.length,
+          returned: sliced.length,
+          methodology:
+            "For each candidate customer, served_by_count = how many of the input companies document it as a customer " +
+            "(directly, or it documents them as a supplier — edges are merged from both directions). Ranked by " +
+            "served_by_count descending.",
+          caveat:
+            `${noCustomers.length} of ${inputCompanies.length} input companies have zero documented customers, so a ` +
+            "low overlap number can mean either genuinely few shared customers or thin documentation.",
           edge_coverage: edgeCoverage(companies),
         },
         attribution: attributionGeneric(),

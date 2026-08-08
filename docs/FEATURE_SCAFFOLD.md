@@ -107,6 +107,15 @@ Neighbor lists sorted by market cap before EDGE_CAP slice (was insertion order).
 `jsonResult` attaches `liveFreshness()`:
 `{ live_cache_age_ms, companies_age_ms, deals_age_ms, stale }`.
 
+### A12. ✅ NEW TOOL — `find_common_customers`
+
+Downstream twin of `find_common_suppliers` in `graphtools.ts`.
+
+### A13. ✅ `find_paths_between` either-mode budget
+
+Per-side collection uses `min(cap*2, 50)` before shortest-first merge; `search_capped` /
+`total_collected` disclose incompleteness honestly.
+
 ---
 
 ## B. worldcup-bracket — after CRITICAL security patches
