@@ -87,5 +87,14 @@ scoped `CF_API_TOKEN` that shadows the wrangler OAuth session and fails with aut
 
 ---
 
+## Audit handoff
+
+A full cross-repo bug audit (2026-08-08) lives in **`AUDIT_HANDOFF_FOR_CLAUDE.md`** (start there).
+wafergraph-mcp-only detail is in **`docs/BUG_AUDIT_wafergraph-mcp.md`**. Findings only — no fixes
+applied in that pass. Prior “Mistral AI code review” cloud run had done nothing until that handoff
+was written; Sous was out of scope (separate chat).
+
+---
+
 Local build history, decisions, and session notes live in `CLAUDE.local.md` (gitignored, not
 part of this public repo).
