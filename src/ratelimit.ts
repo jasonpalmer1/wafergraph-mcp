@@ -1,13 +1,11 @@
-// OPTIONAL public rate-limit helper — scaffold only.
+// OPTIONAL public rate-limit helper.
 //
-// Not wired into src/index.ts yet. Enable later with an env flag if abuse
-// appears on expensive graph tools. Design rules:
+// Wired in src/index.ts behind RATE_LIMIT_ENABLED=1 (off by default). Design:
 //   - Fail-open: KV errors must never block a tool call
 //   - Counts only (same philosophy as usage.ts) — no query contents
-//   - If you ever key by client IP, hash it with a secret salt first; never
-//     store raw IPs in USAGE_KV
+//   - Keys are session id or CF colo — never raw client IPs in USAGE_KV
 //
-// Claude: see docs/FEATURE_SCAFFOLD.md §A2 before wiring this up.
+// Claude: see docs/FEATURE_SCAFFOLD.md §A2 to enable on the laptop after deploy.
 
 export interface RateLimitResult {
   ok: boolean;

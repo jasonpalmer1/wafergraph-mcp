@@ -70,6 +70,11 @@ Smoke + `recommend_tools` routing included.
 (sibling of `data` / `attribution` / `links`). Smoke asserts the field exists.
 `get_dataset_stats` still carries its own detailed freshness block inside `data`.
 
+### A4f. ✅ NEW TOOL — `list_stale_companies`
+
+In `deals.ts`. Oldest `last_verified` rows (optional segment + days-behind-newest filter).
+Companion to `get_dataset_stats` staleness summary.
+
 ### A6. Taxonomy live-fetch when upstream exposes JSON
 
 Today taxonomy is vendored (`data/taxonomy.snapshot.json`). If wafergraph.com

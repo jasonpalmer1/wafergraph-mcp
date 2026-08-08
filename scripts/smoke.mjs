@@ -81,12 +81,17 @@ const CASES = {
   get_ma_activity_summary: {},
   find_consolidation_hotspots: {},
   get_dataset_stats: {},
+  list_stale_companies: { limit: 5, older_than_days_vs_newest: 30 },
   recommend_tools: { intent: "who could replace ASML as a lithography supplier" },
 };
 
 /** Light shape checks — still success-oriented, but empty/wrong payloads fail. */
 const ASSERTS = {
   get_company: (d) => d?.company?.id === "tsmc",
+  compare_companies: (d) =>
+    Array.isArray(d?.companies) &&
+    Array.isArray(d?.shared_suppliers?.companies) &&
+    typeof d?.shared_suppliers?.total === "number",
   get_supply_chain: (d) =>
     d?.focal_id === "nvidia" &&
     Array.isArray(d?.tiers) &&
@@ -96,6 +101,7 @@ const ASSERTS = {
   find_paths_between: (d) => Array.isArray(d?.paths),
   get_deal: (d) => typeof d?.id === "string" && d.id.includes("amd"),
   get_dataset_stats: (d) => typeof d?.counts?.companies === "number" && d.counts.companies > 0,
+  list_stale_companies: (d) => Array.isArray(d?.results) && typeof d?.matching_total === "number",
   simulate_disruption: (d) => d?.removed?.criterion === "company",
   find_substitutes: (d) => Array.isArray(d?.results) && d?.focal?.id,
   explain_relationship: (d) =>

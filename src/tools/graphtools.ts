@@ -645,13 +645,23 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
         }
       }
 
+      // Cap served_companies per row — segment mode can list dozens of buyers
+      // for a common supplier and blow agent context.
+      const SERVED_LIST_CAP = 10;
       const results = [...tally.entries()]
-        .map(([sid, servedSet]) => ({
-          ...companyRef(graph, sid),
-          served_count: servedSet.size,
-          served_share: `${servedSet.size}/${inputCompanies.length}`,
-          served_companies: [...servedSet].map((id) => companyRef(graph, id)),
-        }))
+        .map(([sid, servedSet]) => {
+          const servedIds = [...servedSet];
+          return {
+            ...companyRef(graph, sid),
+            served_count: servedSet.size,
+            served_share: `${servedSet.size}/${inputCompanies.length}`,
+            served_companies: servedIds.slice(0, SERVED_LIST_CAP).map((id) => companyRef(graph, id)),
+            served_companies_returned: Math.min(servedIds.length, SERVED_LIST_CAP),
+            ...(servedIds.length > SERVED_LIST_CAP
+              ? { served_companies_truncated: true as const }
+              : {}),
+          };
+        })
         .sort((a, b) => b.served_count - a.served_count);
 
       const cap = limit ?? 20;

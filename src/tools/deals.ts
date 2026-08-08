@@ -368,7 +368,92 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
     },
   );
 
-  // ---- 5. get_dataset_stats ----------------------------------------------
+  // ---- 5. list_stale_companies -------------------------------------------
+  // Concrete follow-up to get_dataset_stats' last_verified summary: which
+  // company rows are oldest relative to the newest verification in the set.
+  server.registerTool(
+    "list_stale_companies",
+    {
+      title: "List stale companies",
+      description:
+        "Companies with the oldest last_verified dates in the dataset (optionally filtered by segment), ranked " +
+        "oldest-first. Use after get_dataset_stats when you need the actual rows behind the staleness summary — " +
+        "this is relative to the newest last_verified in the corpus, not wall-clock today.",
+      inputSchema: {
+        segment: z.string().optional().describe("Optional taxonomy segment id to restrict the scope (see get_segments)."),
+        limit: z.number().int().min(1).max(50).optional().default(20).describe("Max companies to return, 1-50. Default 20."),
+        older_than_days_vs_newest: z
+          .number()
+          .int()
+          .min(1)
+          .max(3650)
+          .optional()
+          .describe(
+            "If set, only include companies whose last_verified is at least this many days older than the newest " +
+              "last_verified in the (scoped) dataset. Omit to return the oldest N regardless.",
+          ),
+      },
+    },
+    async ({ segment, limit, older_than_days_vs_newest }) => {
+      void recordUsage(ctx.env, "list_stale_companies", ctx.isSelfTest());
+      const { companies } = await loadAll();
+      const seg = segment?.trim().toLowerCase();
+      const scope = seg ? companies.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg)) : companies;
+      if (seg && scope.length === 0) {
+        return errorResult(`No companies found in segment "${segment}".`, {
+          hint: "Use get_segments for valid segment ids.",
+        });
+      }
+
+      const withDates = scope
+        .filter((c) => !!c.last_verified)
+        .slice()
+        .sort(
+          (a, b) =>
+            a.last_verified.localeCompare(b.last_verified) || a.name.localeCompare(b.name),
+        );
+      const newest = withDates.length ? withDates[withDates.length - 1]!.last_verified : null;
+      const oldest = withDates.length ? withDates[0]!.last_verified : null;
+
+      let filtered = withDates;
+      if (newest && older_than_days_vs_newest != null) {
+        const cutoffMs = new Date(newest).getTime() - older_than_days_vs_newest * 24 * 60 * 60 * 1000;
+        filtered = withDates.filter((c) => new Date(c.last_verified).getTime() < cutoffMs);
+      }
+
+      const lim = Math.min(Math.max(limit ?? 20, 1), 50);
+      const results = filtered.slice(0, lim).map((c) => ({
+        ...briefRef(c),
+        last_verified: c.last_verified,
+        days_behind_newest:
+          newest != null
+            ? Math.max(
+                0,
+                Math.floor((new Date(newest).getTime() - new Date(c.last_verified).getTime()) / (24 * 60 * 60 * 1000)),
+              )
+            : null,
+      }));
+
+      return jsonResult({
+        data: {
+          scope: seg ? `segment: ${segment}` : "all companies",
+          newest_last_verified_in_scope: newest,
+          oldest_last_verified_in_scope: oldest,
+          matching_total: filtered.length,
+          returned: results.length,
+          results,
+          note:
+            "Staleness is relative to newest_last_verified_in_scope in this dataset, not wall-clock today. " +
+            "A large days_behind_newest means the row is older than peer rows wafergraph has refreshed — not that " +
+            "the company is inactive.",
+        },
+        attribution: attributionGeneric(),
+        links: LINKS,
+      });
+    },
+  );
+
+  // ---- 6. get_dataset_stats ----------------------------------------------
   server.registerTool(
     "get_dataset_stats",
     {
@@ -377,7 +462,8 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
         "The honesty tool: what this dataset actually contains and where it is thin. Live-computed per-field " +
         "coverage for companies and deals, last_verified staleness distribution, supply-chain edge coverage, data " +
         "source mode, and a plain-words list of known limitations. Call this before treating an absence of a " +
-        "company, deal, or edge as evidence it doesn't exist in the real market.",
+        "company, deal, or edge as evidence it doesn't exist in the real market. For the actual oldest rows, " +
+        "follow up with list_stale_companies.",
       inputSchema: {},
     },
     async () => {

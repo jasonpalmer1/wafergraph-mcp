@@ -16,7 +16,7 @@ import { registerMetaTools } from "./tools/meta";
 type State = Record<string, never>;
 
 export class WafergraphMCP extends McpAgent<Env, State, {}> {
-  server = new McpServer({ name: "wafergraph-mcp", version: "1.3.3" });
+  server = new McpServer({ name: "wafergraph-mcp", version: "1.3.4" });
   initialState: State = {};
 
   // Set once per session from the initialize handshake, then applied to every

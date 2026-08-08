@@ -156,10 +156,16 @@ None. No RCE, SSRF, auth bypass, or exploitable KV/HTML injection found for curr
 
 ## Suggested fix PR order for Claude
 
-1. H1 filter join + H3 disruption ticker (small, high impact).
-2. H2 path search → BFS.
-3. M1+M2 cache resilience.
-4. M4 shared country normalize; M3 drop hardcoded 565.
-5. M10 `void recordUsage`; then remaining Medium/Low as capacity allows.
+Most of the original High/Medium items are ✅ FIXED on this branch. Remaining polish
+shipped later in the autonomous loop:
+
+- ✅ Cap `compare_companies` shared_suppliers/shared_customers (object: total/returned/companies)
+- ✅ Cap `analyze_portfolio_exposure` shared_upstream_suppliers (+ totals)
+- ✅ Cap `find_common_suppliers` per-row `served_companies` list
+- ✅ Stale `ratelimit.ts` “not wired” comment corrected (it is wired, flag-gated)
 
 After any tool behavior change: run `node scripts/smoke.mjs https://mcp.wafergraph.com` (and locally if you have a wrangler preview). Smoke fails if a registered tool has no case — keep it that way.
+
+**Breaking note for Claude clients:** `compare_companies` `shared_suppliers` /
+`shared_customers` are no longer bare arrays — they are
+`{ total, returned, companies: [...] }`. Update any local wrappers if you have them.

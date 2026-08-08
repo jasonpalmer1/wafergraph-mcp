@@ -141,7 +141,7 @@ export function renderLanding(origin: string): string {
   <h1>wafergraph MCP</h1>
   <p class="lede">
     Read-only access to wafergraph.com's semiconductor &amp; AI supply-chain dataset — hundreds of companies across
-    12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as 34 tools any MCP-speaking
+    12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as 35 tools any MCP-speaking
     AI agent can call directly.
   </p>
 
@@ -171,6 +171,7 @@ export function renderLanding(origin: string): string {
     <li><code>get_deals</code> / <code>get_deal</code> / <code>find_deals_by_company</code> <span>— the M&amp;A corpus</span></li>
     <li><code>get_ma_activity_summary</code> / <code>find_consolidation_hotspots</code> <span>— where consolidation is happening</span></li>
     <li><code>get_dataset_stats</code> <span>— coverage, freshness, and what this data cannot answer</span></li>
+    <li><code>list_stale_companies</code> <span>— oldest last_verified company rows (relative staleness)</span></li>
     <li><code>recommend_tools</code> <span>— which tool to call for a given research intent</span></li>
   </ul>
 

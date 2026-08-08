@@ -392,18 +392,31 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
 
         // Shared counterparties are the comparative payload an agent actually
         // wants — "what do these two both depend on" is the common question.
+        // Cap the lists: hub pairs can share dozens of edges and blow context.
+        const SHARED_CAP = compact ? 15 : 25;
         const supplierSets = resolved.map(({ company: c }) => new Set(suppliersOf(graph, c.id)));
         const customerSets = resolved.map(({ company: c }) => new Set(customersOf(graph, c.id)));
-        const intersect = (sets: Set<string>[]) =>
-          [...(sets[0] ?? [])].filter((id) => sets.every((s) => s.has(id))).map((id) => companyRef(graph, id));
+        const intersectIds = (sets: Set<string>[]) =>
+          [...(sets[0] ?? [])]
+            .filter((id) => sets.every((s) => s.has(id)))
+            .sort(
+              (a, b) =>
+                (graph.byId.get(b)?.market_cap_usd_b ?? -1) - (graph.byId.get(a)?.market_cap_usd_b ?? -1) ||
+                (graph.byId.get(a)?.name ?? "").localeCompare(graph.byId.get(b)?.name ?? ""),
+            );
+        const packShared = (ids: string[]) => ({
+          total: ids.length,
+          returned: Math.min(ids.length, SHARED_CAP),
+          companies: ids.slice(0, SHARED_CAP).map((id) => companyRef(graph, id)),
+        });
 
         const priced = rows.filter((r) => r.market_cap_usd_b != null).length;
 
         return jsonResult({
           data: {
             companies: rows,
-            shared_suppliers: intersect(supplierSets),
-            shared_customers: intersect(customerSets),
+            shared_suppliers: packShared(intersectIds(supplierSets)),
+            shared_customers: packShared(intersectIds(customerSets)),
             compact: !!compact,
             ...(unresolved.length ? { unresolved } : {}),
             market_cap_coverage: `${priced}/${rows.length} compared companies have a market cap on file`,
@@ -420,9 +433,9 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
     {
       title: "Get country exposure",
       description:
-        "Geographic concentration of the supply chain: which countries host the companies in a given segment (or " +
-        "across all 12 segments), ranked by company count. Answers 'how concentrated in Taiwan is advanced " +
-        "lithography' style questions. Country (headquarters) is recorded for every company in the dataset.",
+        "Geographic concentration of the supply chain: which headquarters countries host the companies in a given " +
+        "segment (or across all 12 segments), ranked by company count. Country is HQ only — not fab/manufacturing " +
+        "footprint. Answers 'how concentrated in Taiwan is foundry HQ presence' style questions.",
       inputSchema: {
         segment: z
           .string()
@@ -606,10 +619,12 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
           supplierHits.set(sid, [...(supplierHits.get(sid) ?? []), c.id]);
         }
       }
-      const sharedSuppliers = [...supplierHits.entries()]
+      const SHARED_UPSTREAM_CAP = 25;
+      const sharedSuppliersAll = [...supplierHits.entries()]
         .filter(([, dependents]) => dependents.length >= 2)
         .map(([sid, dependents]) => ({ ...companyRef(graph, sid), depended_on_by: dependents }))
         .sort((a, b) => b.depended_on_by.length - a.depended_on_by.length);
+      const sharedSuppliers = sharedSuppliersAll.slice(0, SHARED_UPSTREAM_CAP);
 
       return jsonResult({
         data: {
@@ -618,15 +633,19 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
           segment_exposure: tally(matched.flatMap((c) => c.segments.map((s) => s.segment))),
           country_exposure: tally(matched.map((c) => c.country)),
           shared_upstream_suppliers: sharedSuppliers,
+          shared_upstream_total: sharedSuppliersAll.length,
+          shared_upstream_returned: sharedSuppliers.length,
           interpretation:
-            "shared_upstream_suppliers lists companies that more than one holding depends on. Concentration there means " +
-            "positions that look diversified may fail together on the same upstream disruption. " +
-            "segment_exposure.share is the % of holdings that touch that segment (multi-segment holdings count in " +
-            "every segment they touch), so segment shares can sum above 100% — it is not a partition of the portfolio.",
+            "shared_upstream_suppliers lists companies that more than one holding depends on (capped; see " +
+            "shared_upstream_total). Concentration there means positions that look diversified may fail together on " +
+            "the same upstream disruption. segment_exposure.share is the % of holdings that touch that segment " +
+            "(multi-segment holdings count in every segment they touch), so segment shares can sum above 100% — it " +
+            "is not a partition of the portfolio.",
           disclaimer: "Informational supply-chain mapping over public data. Not investment advice.",
         },
         attribution: attributionGeneric(),
         links: LINKS,
       });
     },
-  );};
+  );
+};
