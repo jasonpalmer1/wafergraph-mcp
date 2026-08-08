@@ -163,6 +163,7 @@ shipped later in the autonomous loop:
 - ✅ Cap `analyze_portfolio_exposure` shared_upstream_suppliers (+ totals)
 - ✅ Cap `find_common_suppliers` per-row `served_companies` list
 - ✅ Stale `ratelimit.ts` “not wired” comment corrected (it is wired, flag-gated)
+- ✅ `search_companies` matches ticker/id (not only name/one_liner) and relevance-ranks results
 
 After any tool behavior change: run `node scripts/smoke.mjs https://mcp.wafergraph.com` (and locally if you have a wrangler preview). Smoke fails if a registered tool has no case — keep it that way.
 

@@ -44,7 +44,7 @@ async function rpc(method, params, { notify = false } = {}) {
 // One representative call per tool. Arguments are real ids from the dataset
 // so a silent empty result is visible as a failure, not mistaken for "works".
 const CASES = {
-  search_companies: { query: "wafer" },
+  search_companies: { query: "NVDA" },
   get_company: { id: "tsmc" },
   get_segments: {},
   get_supply_chain: { id: "nvidia", direction: "up", depth: 2 },
@@ -87,6 +87,8 @@ const CASES = {
 
 /** Light shape checks — still success-oriented, but empty/wrong payloads fail. */
 const ASSERTS = {
+  search_companies: (d) =>
+    Array.isArray(d?.results) && d.results.some((r) => r.id === "nvidia" || r.ticker === "NVDA"),
   get_company: (d) => d?.company?.id === "tsmc",
   compare_companies: (d) =>
     Array.isArray(d?.companies) &&

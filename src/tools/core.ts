@@ -25,10 +25,14 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
       title: "Search companies",
       description:
         "Search wafergraph's semiconductor & AI supply-chain company dataset (hundreds of companies across 12 segments) by " +
-        "name/one_liner substring and/or segment and/or country. Returns a compact list capped at 25 with a total match count. " +
-        "Use get_segments first if you don't know valid segment ids.",
+        "name/ticker/id/one_liner substring and/or segment and/or country. Returns a compact list capped at 25 " +
+        "(relevance-ranked: exact ticker/id, then name prefix, then market cap) with a total match count. " +
+        "For a pure ticker/id batch resolve, prefer resolve_ticker. Use get_segments first if you don't know valid segment ids.",
       inputSchema: {
-        query: z.string().optional().describe("Case-insensitive substring match against company name and one_liner."),
+        query: z
+          .string()
+          .optional()
+          .describe("Case-insensitive substring match against company name, ticker, id, and one_liner."),
         segment: z
           .string()
           .optional()
@@ -44,14 +48,44 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
       const ctry = country ? normalizeCountryQuery(country) : undefined;
 
       const matches = companies.filter((c) => {
-        if (q && !(c.name.toLowerCase().includes(q) || (c.one_liner ?? "").toLowerCase().includes(q))) return false;
+        if (q) {
+          const hit =
+            c.name.toLowerCase().includes(q) ||
+            c.id.toLowerCase().includes(q) ||
+            (c.ticker !== null && c.ticker.toLowerCase().includes(q)) ||
+            (c.one_liner ?? "").toLowerCase().includes(q);
+          if (!hit) return false;
+        }
         if (seg && !c.segments.some((s) => s.segment.toLowerCase() === seg)) return false;
         if (ctry && c.country.toLowerCase() !== ctry) return false;
         return true;
       });
 
+      const scoreMatch = (c: (typeof companies)[number]): number => {
+        if (!q) return 0;
+        let s = 0;
+        if (c.ticker && c.ticker.toLowerCase() === q) s += 100;
+        if (c.id.toLowerCase() === q) s += 90;
+        if (c.name.toLowerCase() === q) s += 80;
+        if (c.ticker && c.ticker.toLowerCase().startsWith(q)) s += 40;
+        if (c.id.toLowerCase().startsWith(q)) s += 35;
+        if (c.name.toLowerCase().startsWith(q)) s += 30;
+        if (c.name.toLowerCase().includes(q)) s += 10;
+        return s;
+      };
+
       const CAP = 25;
-      const results = matches.slice(0, CAP).map((c) => ({
+      const ranked = matches.slice().sort((a, b) => {
+        const ds = scoreMatch(b) - scoreMatch(a);
+        if (ds) return ds;
+        const ac = a.market_cap_usd_b;
+        const bc = b.market_cap_usd_b;
+        if (ac == null && bc == null) return a.name.localeCompare(b.name);
+        if (ac == null) return 1;
+        if (bc == null) return -1;
+        return bc - ac;
+      });
+      const results = ranked.slice(0, CAP).map((c) => ({
         id: c.id,
         name: c.name,
         ticker: c.ticker,
