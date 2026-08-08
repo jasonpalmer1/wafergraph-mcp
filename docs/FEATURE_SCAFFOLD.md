@@ -76,9 +76,8 @@ Only after `docs/ready-fixes/worldcup-bracket.md` is applied and deployed:
 
 1. **Edit-token email/share link** — “copy your private edit link” UX after create.
 2. **Admin session cookie** — replace `localStorage` pass.
-3. **Official results feed stub** — `src/resultsProvider.js` interface
-   `{ fetchResults(): Promise<Record<string,string>> }` with a manual admin
-   implementation first; later a FIFA/scraped provider. Keep scoring pure.
+3. **Official results feed stub** — see
+   `docs/ready-fixes/worldcup-bracket-results-provider.md` (after CRITICAL security).
 
 ---
 

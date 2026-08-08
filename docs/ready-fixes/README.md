@@ -32,6 +32,7 @@ Sous is out of scope (separate chat). wafergraph-mcp findings live in
 | 4 | [`claude-code-setup.md`](./claude-code-setup.md) | `claude-code-setup` | High | Ledger path mismatch; SessionEnd `acceptEdits` blast radius; monday-cockpit broad grants |
 | 5 | [`react-canvas-force-graph.md`](./react-canvas-force-graph.md) | `react-canvas-force-graph` | Medium | Stale `onNodePick`; visual props ignored; resize doesn't rescale |
 | 6 | [`jasonwpalmer-com-build-log-template.md`](./jasonwpalmer-com-build-log-template.md) | `jasonwpalmer-com` | Scaffold | MDX build-log template for shipping posts |
+| 7 | [`worldcup-bracket-results-provider.md`](./worldcup-bracket-results-provider.md) | `worldcup-bracket` | Scaffold | After CRITICAL fixes — resultsProvider interface |
 
 ## Status legend
 

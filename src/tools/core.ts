@@ -295,61 +295,76 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
         "Side-by-side comparison of 2-6 companies on the same fields, plus their shared supply-chain " +
         "counterparties (suppliers/customers documented for every company in the set). Cheaper and more aligned " +
         "than several get_company calls when the question is comparative.",
-      inputSchema: {
-        ids: z
-          .array(z.string())
-          .min(2)
-          .max(6)
-          .describe("Company ids, exact names, or tickers. 2-6 of them."),
-      },
-    },
-    async ({ ids }) => {
-      void recordUsage(ctx.env, "compare_companies", ctx.isSelfTest());
-      const { companies, graph } = await loadGraph();
-
-      const resolved: { input: string; company: (typeof companies)[number] }[] = [];
-      const unresolved: string[] = [];
-      for (const raw of ids) {
-        const c = resolveCompany(graph, raw);
-        if (c && !resolved.some((r) => r.company.id === c.id)) resolved.push({ input: raw, company: c });
-        else if (!c) unresolved.push(raw);
-      }
-      if (resolved.length < 2) {
-        return errorResult("Need at least 2 resolvable companies to compare.", {
-          unresolved,
-          hint: "Use search_companies to find valid ids.",
-        });
-      }
-
-      const rows = resolved.map(({ company: c }) => ({
-        ...toAllowedCompany(c),
-        supplier_count: suppliersOf(graph, c.id).length,
-        customer_count: customersOf(graph, c.id).length,
-        company_url: companyUrl(c.id),
-      }));
-
-      // Shared counterparties are the comparative payload an agent actually
-      // wants — "what do these two both depend on" is the common question.
-      const supplierSets = resolved.map(({ company: c }) => new Set(suppliersOf(graph, c.id)));
-      const customerSets = resolved.map(({ company: c }) => new Set(customersOf(graph, c.id)));
-      const intersect = (sets: Set<string>[]) =>
-        [...(sets[0] ?? [])].filter((id) => sets.every((s) => s.has(id))).map((id) => companyRef(graph, id));
-
-      const priced = rows.filter((r) => r.market_cap_usd_b !== null).length;
-
-      return jsonResult({
-        data: {
-          companies: rows,
-          shared_suppliers: intersect(supplierSets),
-          shared_customers: intersect(customerSets),
-          ...(unresolved.length ? { unresolved } : {}),
-          market_cap_coverage: `${priced}/${rows.length} compared companies have a market cap on file`,
+        inputSchema: {
+          ids: z
+            .array(z.string())
+            .min(2)
+            .max(6)
+            .describe("Company ids, exact names, or tickers. 2-6 of them."),
+          compact: z
+            .boolean()
+            .optional()
+            .default(false)
+            .describe("If true, return brief company rows (no full AllowedCompany blobs). Default false."),
         },
-        attribution: attributionGeneric(),
-        links: LINKS,
-      });
-    },
-  );
+      },
+      async ({ ids, compact }) => {
+        void recordUsage(ctx.env, "compare_companies", ctx.isSelfTest());
+        const { companies, graph } = await loadGraph();
+
+        const resolved: { input: string; company: (typeof companies)[number] }[] = [];
+        const unresolved: string[] = [];
+        for (const raw of ids) {
+          const c = resolveCompany(graph, raw);
+          if (c && !resolved.some((r) => r.company.id === c.id)) resolved.push({ input: raw, company: c });
+          else if (!c) unresolved.push(raw);
+        }
+        if (resolved.length < 2) {
+          return errorResult("Need at least 2 resolvable companies to compare.", {
+            unresolved,
+            hint: "Use search_companies to find valid ids.",
+          });
+        }
+
+        const rows = resolved.map(({ company: c }) =>
+          compact
+            ? {
+                ...companyRef(graph, c.id),
+                segments: c.segments,
+                supplier_count: suppliersOf(graph, c.id).length,
+                customer_count: customersOf(graph, c.id).length,
+              }
+            : {
+                ...toAllowedCompany(c),
+                supplier_count: suppliersOf(graph, c.id).length,
+                customer_count: customersOf(graph, c.id).length,
+                company_url: companyUrl(c.id),
+              },
+        );
+
+        // Shared counterparties are the comparative payload an agent actually
+        // wants — "what do these two both depend on" is the common question.
+        const supplierSets = resolved.map(({ company: c }) => new Set(suppliersOf(graph, c.id)));
+        const customerSets = resolved.map(({ company: c }) => new Set(customersOf(graph, c.id)));
+        const intersect = (sets: Set<string>[]) =>
+          [...(sets[0] ?? [])].filter((id) => sets.every((s) => s.has(id))).map((id) => companyRef(graph, id));
+
+        const priced = rows.filter((r) => r.market_cap_usd_b != null).length;
+
+        return jsonResult({
+          data: {
+            companies: rows,
+            shared_suppliers: intersect(supplierSets),
+            shared_customers: intersect(customerSets),
+            compact: !!compact,
+            ...(unresolved.length ? { unresolved } : {}),
+            market_cap_coverage: `${priced}/${rows.length} compared companies have a market cap on file`,
+          },
+          attribution: attributionGeneric(),
+          links: LINKS,
+        });
+      },
+    );
 
   // ---- 7. get_country_exposure -----------------------------------------
   server.registerTool(
