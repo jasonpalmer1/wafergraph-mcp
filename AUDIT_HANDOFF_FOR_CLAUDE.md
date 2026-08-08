@@ -71,7 +71,7 @@ Sous = separate chat. Do not duplicate.
 - M3 softened “565” copy
 - M5–M8 compare description, portfolio note, priced rank, truncation note
 - M10 `void recordUsage`
-- HEAD `/`; McpServer version 1.2.1
+- HEAD `/`; McpServer version synced with package (1.3.2)
 
 ### Efficiency / org
 - `buildGraph` identity-cached against companies array
