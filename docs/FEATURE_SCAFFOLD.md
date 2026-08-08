@@ -49,6 +49,10 @@ Shipped on `get_company`: tighter edge cap (25) + brief company payload.
 In `screen.ts`. Follow-up to chokepoints / single-source: same-niche taxonomy
 overlap ranking. Smoke case included. Not commercial interchangeability.
 
+### A4d. ✅ NEW TOOL — `recommend_tools`
+
+In `src/tools/meta.ts`. Intent → primary tool (+ follow-ups). Extend `ROUTING` when adding tools.
+
 ### A4c. ✅ NEW TOOL — `explain_relationship`
 
 In `graphtools.ts`. One call: shortest paths (either direction) + shared

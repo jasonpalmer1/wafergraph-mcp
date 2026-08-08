@@ -34,9 +34,12 @@ Sous = separate chat. Do not duplicate.
 | Rate-limit scaffold (unwired) | `src/ratelimit.ts` |
 | Claude laptop runbook | `docs/CLAUDE_SESSION_CHECKLIST.md` + LOCAL_PICKUP + FEATURE_SCAFFOLD |
 
-`npm run typecheck` should pass after pull. Current package/MCP version: **1.3.1** (32 tools).
+`npm run typecheck` should pass after pull. Current package/MCP version: **1.3.2** (33 tools).
 
 ### Latest loop (continuous cloud work)
+
+- Feature: **recommend_tools** meta router (`src/tools/meta.ts`)
+
 - Feature: compare_companies({ compact: true })
 - Scaffold: worldcup-bracket-results-provider.md (after CRITICAL security)
 
