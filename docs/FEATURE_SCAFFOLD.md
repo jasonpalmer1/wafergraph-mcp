@@ -8,25 +8,17 @@ until you implement + deploy from the laptop (see `CLAUDE_LOCAL_PICKUP.md`).
 
 ## A. wafergraph-mcp — proposed next features
 
-### A1. Shared request context helper (org win — do first)
+### A1. ✅ DONE — Shared context + core tool extraction
 
-**Goal:** One path for “load companies + graph + resolve company” so tools stop
-re-deriving ticker maps / country aliases.
+**Shipped on this branch:**
+- `src/tools/ctxload.ts` — `loadGraph()` / `loadAll()`
+- `resolveCompany` + `Graph.byTicker`, identity-cached `buildGraph`
+- `normalizeCountryQuery` / `resolvePartyCompany` in `shared.ts`
+- Tools 1–9 live in `src/tools/core.ts`; `mcp-agent.ts` is registration-only (~40 lines)
+- Graphtools / deals / geo (graph paths) / screen (similar) use `loadGraph`/`loadAll`
 
-**Already partly done this PR:** `resolveCompany` + `byTicker` on `Graph`,
-`buildGraph` identity cache, `normalizeCountryQuery` in `shared.ts`.
-
-**Claude next:**
-- Optionally add `src/tools/ctxload.ts`:
-  ```ts
-  export async function loadGraph() {
-    const companies = await getCompanies();
-    return { companies, graph: buildGraph(companies) };
-  }
-  ```
-- Migrate tool bodies to use it (pure refactor, no behavior change).
-- Long-term: move first 9 tools from `mcp-agent.ts` → `src/tools/core.ts` so
-  `mcp-agent.ts` is only the Durable Object + `init()` registration.
+**Claude optional polish:** migrate remaining `getCompanies()`-only handlers in
+`screen.ts` / `geo.ts` list tools to `loadGraph()` for consistency (no behavior change).
 
 ### A2. Light rate limiting (public DoS guard)
 

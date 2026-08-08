@@ -9,7 +9,8 @@
 // tallyBy) rather than re-deriving them.
 import { z } from "zod";
 import { getCompanies, getTaxonomy, TAXONOMY_SNAPSHOT_DATE } from "../data";
-import { buildGraph, resolveCompany, suppliersOf, customersOf } from "../graph";
+import { resolveCompany, suppliersOf, customersOf } from "../graph";
+import { loadGraph } from "./ctxload";
 import type { Company } from "../types";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
@@ -321,8 +322,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ id, limit }) => {
       void recordUsage(ctx.env, "find_similar_companies", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
+      const { companies, graph } = await loadGraph();
       const focal = resolveCompany(graph, id);
       if (!focal) {
         return errorResult(`No company found for "${id}".`, {

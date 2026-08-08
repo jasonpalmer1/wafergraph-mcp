@@ -6,7 +6,7 @@
 // them without importing from the agent (which would be circular).
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { companyUrl } from "../attribution";
-import type { Company } from "../types";
+import type { Company, DealParty } from "../types";
 import type { Graph } from "../graph";
 
 export interface ToolCtx {
@@ -121,4 +121,20 @@ export function normalizeCountryQuery(raw: string): string {
 export function resolveCountry(companies: Company[], raw: string): string | undefined {
   const target = normalizeCountryQuery(raw);
   return [...new Set(companies.map((c) => c.country))].find((c) => c.toLowerCase() === target);
+}
+
+/** Resolve a deal party to a dataset company: id first, then exact name (null-id safe). */
+export function resolvePartyCompany(
+  companies: Company[],
+  graph: Graph,
+  party: DealParty,
+): { company: Company | null; method: "id" | "name" | null } {
+  if (party.id) {
+    const byId = graph.byId.get(party.id);
+    if (byId) return { company: byId, method: "id" };
+  }
+  const needle = party.name.trim().toLowerCase();
+  const byName = companies.find((c) => c.name.trim().toLowerCase() === needle);
+  if (byName) return { company: byName, method: "name" };
+  return { company: null, method: null };
 }

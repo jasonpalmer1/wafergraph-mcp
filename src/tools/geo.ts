@@ -10,7 +10,8 @@
 // misread of the data — so every response says so, not just the tool docs.
 import { z } from "zod";
 import { getCompanies } from "../data";
-import { buildGraph, resolveCompany, suppliersOf, customersOf, type Graph } from "../graph";
+import { resolveCompany, suppliersOf, customersOf } from "../graph";
+import { loadGraph } from "./ctxload";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
 import {
@@ -161,7 +162,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ country }) => {
       void recordUsage(ctx.env, "get_country_profile", ctx.isSelfTest());
-      const companies = await getCompanies();
+      const { companies, graph } = await loadGraph();
       const resolved = resolveCountry(companies, country);
       if (!resolved) {
         return errorResult(`No country found matching "${country}".`, {
@@ -171,7 +172,6 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
       }
 
       const inCountry = companies.filter((c) => c.country === resolved);
-      const graph = buildGraph(companies);
 
       const TOP_CAP = 15;
       const sortedByCap = [...inCountry].sort((a, b) => (b.market_cap_usd_b ?? -1) - (a.market_cap_usd_b ?? -1));
@@ -425,8 +425,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ id }) => {
       void recordUsage(ctx.env, "get_upstream_concentration", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const graph: Graph = buildGraph(companies);
+      const { companies, graph } = await loadGraph();
       const focal = resolveCompany(graph, id);
       if (!focal) {
         return errorResult(`No company found for "${id}".`, {

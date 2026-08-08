@@ -15,33 +15,23 @@
 //   2. `confidence` is a per-deal quality flag on the record itself. It is
 //      surfaced as-is; nothing here averages it into a derived score.
 import { z } from "zod";
-import { getCompanies, getDeals, getTaxonomy, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE, cacheAgeMs } from "../data";
-import { buildGraph, resolveCompany, type Graph } from "../graph";
-import type { Company, Deal, DealParty } from "../types";
+import { DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE, cacheAgeMs } from "../data";
+import { resolveCompany } from "../graph";
+import type { Company, Deal } from "../types";
 import { attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
-import { jsonResult, errorResult, companyRef, briefRef, tallyBy, type ToolRegistrar } from "./shared";
+import {
+  jsonResult,
+  errorResult,
+  companyRef,
+  briefRef,
+  tallyBy,
+  resolvePartyCompany,
+  type ToolRegistrar,
+} from "./shared";
+import { loadGraph, loadAll } from "./ctxload";
 
 // ---- shared helpers --------------------------------------------------
-
-// Resolve one deal party to a dataset company: id match first, then
-// case-insensitive exact name match. Returns the match method so callers can
-// tell a strong (id) match from a weaker (name-only) one. Exported so
-// get_deals (mcp-agent) can use the same null-id name fallback.
-export function resolvePartyCompany(
-  companies: Company[],
-  graph: Graph,
-  party: DealParty,
-): { company: Company | null; method: "id" | "name" | null } {
-  if (party.id) {
-    const byId = graph.byId.get(party.id);
-    if (byId) return { company: byId, method: "id" };
-  }
-  const needle = party.name.trim().toLowerCase();
-  const byName = companies.find((c) => c.name.trim().toLowerCase() === needle);
-  if (byName) return { company: byName, method: "name" };
-  return { company: null, method: null };
-}
 
 function nonEmpty(v: unknown): boolean {
   if (v === null || v === undefined) return false;
@@ -99,8 +89,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ id }) => {
       void recordUsage(ctx.env, "get_deal", ctx.isSelfTest());
-      const [deals, companies] = await Promise.all([getDeals(), getCompanies()]);
-      const graph = buildGraph(companies);
+      const { companies, deals, graph } = await loadAll();
 
       const needle = id.trim().toLowerCase();
       const deal = deals.find((d) => d.id === id) ?? deals.find((d) => d.id.toLowerCase() === needle);
@@ -161,8 +150,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ company }) => {
       void recordUsage(ctx.env, "find_deals_by_company", ctx.isSelfTest());
-      const [companies, deals] = await Promise.all([getCompanies(), getDeals()]);
-      const graph = buildGraph(companies);
+      const { companies, deals, graph } = await loadAll();
 
       const resolved = resolveCompany(graph, company) ?? null;
       const targetId = resolved?.id ?? null;
@@ -250,7 +238,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ top_n }) => {
       void recordUsage(ctx.env, "get_ma_activity_summary", ctx.isSelfTest());
-      const deals = await getDeals();
+      const { deals } = await loadAll();
 
       const by_year = tallyBy(deals, (d) => (d.announced ? d.announced.slice(0, 4) : "unknown"));
       const by_type = tallyBy(deals, (d) => d.type);
@@ -319,8 +307,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ limit, sort_by }) => {
       void recordUsage(ctx.env, "find_consolidation_hotspots", ctx.isSelfTest());
-      const [companies, deals, taxonomy] = await Promise.all([getCompanies(), getDeals(), getTaxonomy()]);
-      const graph = buildGraph(companies);
+      const { companies, deals, taxonomy, graph } = await loadAll();
       const segNames = new Map(taxonomy.segments.map((s) => [s.id, s.name]));
 
       const segStats = new Map<string, { deal_count: number; disclosed_value_usd: number; deals_with_value: number }>();
@@ -395,8 +382,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
     },
     async () => {
       void recordUsage(ctx.env, "get_dataset_stats", ctx.isSelfTest());
-      const [companies, deals, taxonomy] = await Promise.all([getCompanies(), getDeals(), getTaxonomy()]);
-      const graph = buildGraph(companies);
+      const { companies, deals, taxonomy, graph } = await loadAll();
       const countries = new Set(companies.map((c) => c.country)).size;
 
       const company_field_coverage = coverage<Company>(companies, [

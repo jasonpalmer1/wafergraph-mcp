@@ -15,8 +15,8 @@
 2. Apply sibling patches from `docs/ready-fixes/` into each `~/projects/<repo>`.
 3. Deploy with that repo’s wrangler/pages commands.
 
-Full map: **`docs/CLAUDE_LOCAL_PICKUP.md`**.  
-Feature ideas / stubs: **`docs/FEATURE_SCAFFOLD.md`**.
+**First file when you sit down:** `docs/CLAUDE_SESSION_CHECKLIST.md`  
+Then: `docs/CLAUDE_LOCAL_PICKUP.md` · `docs/FEATURE_SCAFFOLD.md` · `docs/ready-fixes/`
 
 Sous = separate chat. Do not duplicate.
 
@@ -29,8 +29,10 @@ Sous = separate chat. Do not duplicate.
 | Cross-repo bug audit | Done |
 | wafergraph-mcp High/Medium/Low fixes + efficiency | **Done on this branch** |
 | Ready-fixes for siblings (no push access) | `docs/ready-fixes/*` |
-| Rate-limit + ctxload scaffolds | `src/ratelimit.ts`, `src/tools/ctxload.ts` (not wired to prod paths yet) |
-| Local pickup + feature notes for Claude | `docs/CLAUDE_LOCAL_PICKUP.md`, `docs/FEATURE_SCAFFOLD.md` |
+| Org: tools 1–9 → `src/tools/core.ts`; mcp-agent registration-only | Done |
+| `loadGraph`/`loadAll` adoption + graph cache | Done (most tools) |
+| Rate-limit scaffold (unwired) | `src/ratelimit.ts` |
+| Claude laptop runbook | `docs/CLAUDE_SESSION_CHECKLIST.md` + LOCAL_PICKUP + FEATURE_SCAFFOLD |
 
 `npm run typecheck` should pass after pull.
 
@@ -86,8 +88,10 @@ Sous = separate chat. Do not duplicate.
 | File | Purpose |
 |---|---|
 | `AUDIT_HANDOFF_FOR_CLAUDE.md` | This index |
-| `docs/CLAUDE_LOCAL_PICKUP.md` | **Local paths + deploy commands** |
+| `docs/CLAUDE_SESSION_CHECKLIST.md` | **Checkbox runbook — open first on laptop** |
+| `docs/CLAUDE_LOCAL_PICKUP.md` | Local paths + deploy commands |
 | `docs/FEATURE_SCAFFOLD.md` | Next features + stub guidance |
+| `src/tools/core.ts` | Tools 1–9 (was inline in mcp-agent) |
 | `docs/BUG_AUDIT_wafergraph-mcp.md` | Original finding detail |
 | `docs/ready-fixes/*` | Sibling-repo patches (apply on laptop) |
 | `src/ratelimit.ts` | Optional RL scaffold (unwired) |
