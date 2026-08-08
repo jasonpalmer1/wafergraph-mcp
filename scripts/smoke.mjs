@@ -80,6 +80,7 @@ const CASES = {
   get_ma_activity_summary: {},
   find_consolidation_hotspots: {},
   get_dataset_stats: {},
+  recommend_tools: { intent: "who could replace ASML as a lithography supplier" },
 };
 
 /** Light shape checks — still success-oriented, but empty/wrong payloads fail. */
@@ -98,6 +99,7 @@ const ASSERTS = {
   find_substitutes: (d) => Array.isArray(d?.results) && d?.focal?.id,
   explain_relationship: (d) =>
     d?.from?.id && d?.to?.id && Array.isArray(d?.paths) && typeof d?.summary === "string",
+  recommend_tools: (d) => Array.isArray(d?.recommendations) && d.recommendations[0]?.primary,
 };
 
 function preview(result, toolName) {

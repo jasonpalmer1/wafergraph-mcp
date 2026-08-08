@@ -1,7 +1,7 @@
 # wafergraph-mcp — Remote MCP server for wafergraph.com's dataset
 
 Read-only Cloudflare Workers MCP server exposing wafergraph.com's semiconductor & AI
-supply-chain dataset (hundreds of companies, 12 segments, M&A deals, supplier/customer graph) as 32
+supply-chain dataset (hundreds of companies, 12 segments, M&A deals, supplier/customer graph) as 33
 tools for AI agents. No auth (v1, public data). Streamable HTTP transport at `/mcp`, human
 landing page at `/`. Independent project — not an official wafergraph product, but built to be
 a good-faith front door to it (every response links back to wafergraph.com and its paid report).
@@ -19,6 +19,7 @@ Live: **https://mcp.wafergraph.com**
 - `src/tools/geo.ts` — geography & structure: `list_countries`, `get_country_profile`, `compare_countries`, `get_segment_leaders`, `get_upstream_concentration`. Country is HQ, not fab location; every tool here says so.
 - `src/tools/graphtools.ts` — graph analysis: `find_paths_between`, `explain_relationship`, `simulate_disruption`, `find_single_source_dependencies`, `rank_by_connectivity`, `find_common_suppliers`.
 - `src/tools/deals.ts` — deals & dataset: `get_deal`, `find_deals_by_company`, `get_ma_activity_summary`, `find_consolidation_hotspots`, `get_dataset_stats`.
+- `src/tools/meta.ts` — `recommend_tools` (intent → tool routing for agents).
 - `src/ratelimit.ts` — optional KV rate-limit; wired in `src/index.ts` when Worker var `RATE_LIMIT_ENABLED=1`.
 - `scripts/smoke.mjs` — live JSON-RPC smoke test over Streamable HTTP; calls every tool `tools/list` reports and fails if any tool has no case, so a new tool cannot ship untested. `node scripts/smoke.mjs [baseUrl]`.
 - `src/data.ts` — data layer: live-fetch + cache for companies/deals, vendored-snapshot read for taxonomy (hybrid mode — taxonomy.json isn't live-fetchable upstream; see `CLAUDE.local.md` for the full story).
