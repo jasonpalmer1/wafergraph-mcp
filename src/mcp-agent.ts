@@ -1,52 +1,31 @@
 // The MCP server itself: registers the 30 read-only tools over wafergraph's
 // public dataset. The first nine live in this file; tools 10-30 are grouped
 // by job into modules under src/tools/ and registered at the end of init().
-// public dataset. Backed by a Durable Object per the `agents` package's
-// McpAgent pattern (free on the Workers Free plan — SQLite storage backend,
-// verified against current Cloudflare docs before building this). No
-// per-session state is actually needed (every tool is a pure read over data
-// fetched fresh by src/data.ts), so State is an empty object.
+// Backed by a Durable Object per the `agents` package's McpAgent pattern
+// (free on the Workers Free plan — SQLite storage backend). No per-session
+// state is actually needed (every tool is a pure read over data fetched by
+// src/data.ts), so State is an empty object.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
 import { getCompanies, getTaxonomy, getDeals, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE } from "./data";
-import { buildGraph, findCompany, suppliersOf, customersOf, walkChain, type Graph } from "./graph";
+import { buildGraph, resolveCompany, suppliersOf, customersOf, walkChain } from "./graph";
 import { toAllowedCompany } from "./types";
 import { attributionForCompany, attributionGeneric, companyUrl, LINKS } from "./attribution";
 import { recordUsage, recordSessionStart, isSelfTestClient } from "./usage";
-import type { ToolCtx } from "./tools/shared";
+import {
+  jsonResult,
+  errorResult,
+  companyRef,
+  normalizeCountryQuery,
+  type ToolCtx,
+} from "./tools/shared";
 import { registerScreenTools } from "./tools/screen";
 import { registerGeoTools } from "./tools/geo";
 import { registerGraphTools } from "./tools/graphtools";
-import { registerDealTools } from "./tools/deals";
+import { registerDealTools, resolvePartyCompany } from "./tools/deals";
 
 type State = Record<string, never>;
-
-function jsonResult(payload: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(payload) }] };
-}
-
-function errorResult(message: string, extra?: Record<string, unknown>) {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify({ error: message, ...extra }) }],
-    isError: true,
-  };
-}
-
-// Compact reference to another company for use in edge lists (suppliers/
-// customers/chain tiers) — enough for an agent to act without a second call.
-function companyRef(g: Graph, id: string) {
-  const c = g.byId.get(id);
-  if (!c) return { id, company_url: companyUrl(id) };
-  return {
-    id: c.id,
-    name: c.name,
-    ticker: c.ticker,
-    market_position: c.market_position,
-    market_cap_usd_b: c.market_cap_usd_b,
-    company_url: companyUrl(c.id),
-  };
-}
 
 export class WafergraphMCP extends McpAgent<Env, State, {}> {
   server = new McpServer({ name: "wafergraph-mcp", version: "1.2.1" });
@@ -90,10 +69,10 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         const companies = await getCompanies();
         const q = query?.trim().toLowerCase();
         const seg = segment?.trim().toLowerCase();
-        const ctry = country?.trim().toLowerCase();
+        const ctry = country ? normalizeCountryQuery(country) : undefined;
 
         const matches = companies.filter((c) => {
-          if (q && !(c.name.toLowerCase().includes(q) || c.one_liner.toLowerCase().includes(q))) return false;
+          if (q && !(c.name.toLowerCase().includes(q) || (c.one_liner ?? "").toLowerCase().includes(q))) return false;
           if (seg && !c.segments.some((s) => s.segment.toLowerCase() === seg)) return false;
           if (ctry && c.country.toLowerCase() !== ctry) return false;
           return true;
@@ -123,21 +102,21 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
       {
         title: "Get company",
         description:
-          "Full allowed profile for one company (by id or exact name) plus its supplier/customer supply-chain edges. " +
-          "Includes key_products (short list of named products/lines). Fields are deliberately limited to " +
+          "Full allowed profile for one company (by id, exact name, or ticker) plus its supplier/customer supply-chain " +
+          "edges. Includes key_products (short list of named products/lines). Fields are deliberately limited to " +
           "established/trust-checked data (see README field-discipline note).",
         inputSchema: {
-          id: z.string().describe("Company id, snake_case (e.g. 'tsmc', 'asml') or exact company name."),
+          id: z.string().describe("Company id (snake_case, e.g. 'tsmc'), exact name, or ticker (e.g. 'TSM')."),
         },
       },
       async ({ id }) => {
         void recordUsage(this.env, "get_company", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
-        const company = findCompany(graph, id);
+        const company = resolveCompany(graph, id);
         if (!company) {
           return errorResult(`No company found for "${id}".`, {
-            hint: "Use search_companies to find a valid id or name.",
+            hint: "Use search_companies to find a valid id, name, or ticker.",
           });
         }
 
@@ -232,11 +211,11 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
           "Walk the supplier/customer graph from one focal company, up to 2 tiers up (suppliers), down (customers), or both. " +
           "Mirrors the chain view on wafergraph.com's Explorer. Returns companies grouped by tier plus the edges between them.",
         inputSchema: {
-          id: z.string().describe("Focal company id or name."),
+          id: z.string().describe("Focal company id, name, or ticker."),
           direction: z
             .enum(["up", "down", "both"])
             .default("both")
-            .describe("up = walk suppliers only, down = walk customers only, both = walk both directions."),
+            .describe("up = walk suppliers only, down = walk customers only, both = walk both directions independently."),
           depth: z.number().int().min(0).max(2).default(2).describe("Number of tiers to walk, capped at 2."),
         },
       },
@@ -244,10 +223,10 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         void recordUsage(this.env, "get_supply_chain", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
-        const focal = findCompany(graph, id);
+        const focal = resolveCompany(graph, id);
         if (!focal) {
           return errorResult(`No company found for "${id}".`, {
-            hint: "Use search_companies to find a valid id or name.",
+            hint: "Use search_companies to find a valid id, name, or ticker.",
           });
         }
 
@@ -280,16 +259,18 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
       async ({ query, segment }) => {
         void recordUsage(this.env, "get_deals", this.selfTest);
         const [deals, companies] = await Promise.all([getDeals(), getCompanies()]);
-        const byId = new Map(companies.map((c) => [c.id, c]));
+        const graph = buildGraph(companies);
         const q = query?.trim().toLowerCase();
         const seg = segment?.trim().toLowerCase();
 
         const matches = deals.filter((d) => {
-          if (q && !(d.title.toLowerCase().includes(q) || d.summary.toLowerCase().includes(q))) return false;
+          if (q && !((d.title ?? "").toLowerCase().includes(q) || (d.summary ?? "").toLowerCase().includes(q))) return false;
           if (seg) {
-            const inSegment = d.parties.some(
-              (p) => p.id && byId.get(p.id)?.segments.some((s) => s.segment.toLowerCase() === seg),
-            );
+            // Match parties by id OR name (null-id parties are common in the corpus).
+            const inSegment = d.parties.some((p) => {
+              const { company } = resolvePartyCompany(companies, graph, p);
+              return !!company?.segments.some((s) => s.segment.toLowerCase() === seg);
+            });
             if (!inSegment) return false;
           }
           return true;
@@ -343,16 +324,10 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         const companies = await getCompanies();
         const graph = buildGraph(companies);
 
-        // Resolve tickers too, matching analyze_portfolio_exposure — users who
-        // just passed ["NVDA","TSM"] there WILL paste the same list here, and
-        // did (found by user-journey testing 2026-07-25, J5).
-        const byTicker = new Map<string, (typeof companies)[number]>();
-        for (const c of companies) if (c.ticker) byTicker.set(c.ticker.toUpperCase(), c);
-
         const resolved: { input: string; company: (typeof companies)[number] }[] = [];
         const unresolved: string[] = [];
         for (const raw of ids) {
-          const c = findCompany(graph, raw) ?? byTicker.get(raw.trim().toUpperCase());
+          const c = resolveCompany(graph, raw);
           if (c && !resolved.some((r) => r.company.id === c.id)) resolved.push({ input: raw, company: c });
           else if (!c) unresolved.push(raw);
         }
@@ -558,14 +533,10 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         const companies = await getCompanies();
         const graph = buildGraph(companies);
 
-        const byTicker = new Map<string, (typeof companies)[number]>();
-        for (const c of companies) if (c.ticker) byTicker.set(c.ticker.toUpperCase(), c);
-
         const matched: (typeof companies)[number][] = [];
         const unmatched: string[] = [];
         for (const raw of holdings) {
-          const key = raw.trim();
-          const c = byTicker.get(key.toUpperCase()) ?? findCompany(graph, key);
+          const c = resolveCompany(graph, raw);
           if (c && !matched.some((m) => m.id === c.id)) matched.push(c);
           else if (!c) unmatched.push(raw);
         }

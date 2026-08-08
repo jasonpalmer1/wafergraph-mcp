@@ -10,16 +10,30 @@
 //     present in the company list) are dropped silently.
 //   - get_supply_chain does a breadth-first walk up (suppliers) and/or down
 //     (customers) from a focal company, tier by tier, capped at depth 2.
+//   - direction "both" walks up and down independently so a firm that is
+//     both a supplier and a customer of the focal can appear in both tiers
+//     (upstream-preferring single map was a known under-count).
 import type { Company } from "./types";
+import { companyUrl } from "./attribution";
 
 export interface Graph {
   suppliers: Map<string, Set<string>>; // id -> ids that supply it
   customers: Map<string, Set<string>>; // id -> ids that buy from it
   byId: Map<string, Company>;
+  byTicker: Map<string, Company>; // UPPERCASE ticker -> company
 }
 
+// Identity-keyed cache: getCompanies() returns the same array reference while
+// the data cache is fresh, so concurrent tools in one isolate share one graph
+// build instead of rebuilding ~615-node edge maps on every call.
+let graphCache: { companies: Company[]; graph: Graph } | null = null;
+
 export function buildGraph(companies: Company[]): Graph {
+  if (graphCache && graphCache.companies === companies) return graphCache.graph;
+
   const byId = new Map(companies.map((c) => [c.id, c]));
+  const byTicker = new Map<string, Company>();
+  for (const c of companies) if (c.ticker) byTicker.set(c.ticker.toUpperCase(), c);
   const suppliers = new Map<string, Set<string>>();
   const customers = new Map<string, Set<string>>();
   const seenEdges = new Set<string>();
@@ -41,7 +55,9 @@ export function buildGraph(companies: Company[]): Graph {
     for (const supplierId of c.key_suppliers ?? []) addEdge(supplierId, c.id);
   }
 
-  return { suppliers, customers, byId };
+  const graph: Graph = { suppliers, customers, byId, byTicker };
+  graphCache = { companies, graph };
+  return graph;
 }
 
 export const suppliersOf = (g: Graph, id: string): string[] => [...(g.suppliers.get(id) ?? [])];
@@ -60,17 +76,26 @@ export function findCompany(g: Graph, idOrName: string): Company | undefined {
   return undefined;
 }
 
+/** id → name → ticker. Use this everywhere a tool accepts "company id/name/ticker". */
+export function resolveCompany(g: Graph, raw: string): Company | undefined {
+  return findCompany(g, raw) ?? g.byTicker.get(raw.trim().toUpperCase());
+}
+
 export type Direction = "up" | "down" | "both";
+
+export interface ChainTierCompany {
+  id: string;
+  name: string;
+  ticker: string | null;
+  country: string;
+  market_position: Company["market_position"];
+  market_cap_usd_b: number | null;
+  company_url: string;
+}
 
 export interface ChainTier {
   tier: number; // negative = upstream (suppliers), positive = downstream (customers), 0 = focal
-  companies: Array<{
-    id: string;
-    name: string;
-    ticker: string | null;
-    market_position: Company["market_position"];
-    market_cap_usd_b: number | null;
-  }>;
+  companies: ChainTierCompany[];
 }
 
 export interface ChainResult {
@@ -80,59 +105,67 @@ export interface ChainResult {
   tiers: ChainTier[];
   edges: Array<{ from: string; to: string }>;
   total_companies: number;
+  /** Companies that appear both upstream and downstream of the focal when direction=both. */
+  dual_role_company_ids: string[];
+  note?: string;
 }
 
-function summarize(g: Graph, id: string) {
+function summarize(g: Graph, id: string): ChainTierCompany {
   const c = g.byId.get(id)!;
   return {
     id: c.id,
     name: c.name,
     ticker: c.ticker,
+    country: c.country,
     market_position: c.market_position,
     market_cap_usd_b: c.market_cap_usd_b,
+    company_url: companyUrl(c.id),
   };
+}
+
+function walkOneDirection(
+  g: Graph,
+  focalId: string,
+  depth: number,
+  mode: "up" | "down",
+): Map<string, number> {
+  const tier = new Map<string, number>();
+  let frontier = [focalId];
+  for (let d = 1; d <= depth; d++) {
+    const next: string[] = [];
+    const signed = mode === "up" ? -d : d;
+    for (const id of frontier) {
+      const neighbors = mode === "up" ? suppliersOf(g, id) : customersOf(g, id);
+      for (const nid of neighbors) {
+        if (!tier.has(nid)) {
+          tier.set(nid, signed);
+          next.push(nid);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return tier;
 }
 
 export function walkChain(g: Graph, focalId: string, direction: Direction, depthInput: number): ChainResult {
   const depth = Math.min(Math.max(Math.trunc(depthInput), 0), 2);
-  const tier = new Map<string, number>();
-  tier.set(focalId, 0);
 
-  if (direction === "up" || direction === "both") {
-    let frontier = [focalId];
-    for (let d = 1; d <= depth; d++) {
-      const next: string[] = [];
-      for (const id of frontier) {
-        for (const supplierId of suppliersOf(g, id)) {
-          if (!tier.has(supplierId)) {
-            tier.set(supplierId, -d);
-            next.push(supplierId);
-          }
-        }
-      }
-      frontier = next;
-    }
-  }
+  const upTier = direction === "up" || direction === "both" ? walkOneDirection(g, focalId, depth, "up") : new Map<string, number>();
+  const downTier =
+    direction === "down" || direction === "both" ? walkOneDirection(g, focalId, depth, "down") : new Map<string, number>();
 
-  if (direction === "down" || direction === "both") {
-    let frontier = [focalId];
-    for (let d = 1; d <= depth; d++) {
-      const next: string[] = [];
-      for (const id of frontier) {
-        for (const customerId of customersOf(g, id)) {
-          if (!tier.has(customerId)) {
-            tier.set(customerId, d);
-            next.push(customerId);
-          }
-        }
-      }
-      frontier = next;
-    }
-  }
+  const dual_role_company_ids = [...upTier.keys()].filter((id) => downTier.has(id));
 
   const byTier = new Map<number, string[]>();
-  for (const [id, t] of tier) {
+  byTier.set(0, [focalId]);
+  for (const [id, t] of upTier) {
     if (!byTier.has(t)) byTier.set(t, []);
+    byTier.get(t)!.push(id);
+  }
+  for (const [id, t] of downTier) {
+    if (!byTier.has(t)) byTier.set(t, []);
+    // Dual-role firms appear in both an upstream and a downstream tier.
     byTier.get(t)!.push(id);
   }
 
@@ -145,7 +178,7 @@ export function walkChain(g: Graph, focalId: string, direction: Direction, depth
         .map((id) => summarize(g, id)),
     }));
 
-  const included = new Set(tier.keys());
+  const included = new Set<string>([focalId, ...upTier.keys(), ...downTier.keys()]);
   const edges: Array<{ from: string; to: string }> = [];
   for (const from of included) {
     for (const to of customersOf(g, from)) {
@@ -160,5 +193,14 @@ export function walkChain(g: Graph, focalId: string, direction: Direction, depth
     tiers,
     edges,
     total_companies: included.size,
+    dual_role_company_ids,
+    ...(direction === "both" && dual_role_company_ids.length
+      ? {
+          note:
+            "Some companies appear in both an upstream and a downstream tier (dual_role_company_ids) because they " +
+            "have documented edges in both directions relative to the focal. They are listed in both tiers; " +
+            "total_companies counts each once.",
+        }
+      : {}),
   };
 }

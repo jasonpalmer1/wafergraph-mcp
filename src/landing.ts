@@ -1,8 +1,14 @@
 // Human landing page at "/". One screen: what this is, how to install it,
 // and a link back to wafergraph.com. `origin` is the live request origin so
 // the install snippets always show the real deployed URL.
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (ch) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!,
+  );
+}
+
 export function renderLanding(origin: string): string {
-  const mcpUrl = `${origin}/mcp`;
+  const mcpUrl = escapeHtml(`${origin}/mcp`);
   return `<!doctype html>
 <html lang="en">
 <head>

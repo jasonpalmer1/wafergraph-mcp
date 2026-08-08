@@ -1,77 +1,83 @@
 # Audit handoff for Claude
 
-> **Audience:** Claude Code (primary coding agent) and Jason.
-> **Author:** Cursor cloud agent run `bc-019fe37e-1d17-72d7-8421-1228c564bedb` ("Mistral AI code review").
-> **Date (UTC):** 2026-08-08
-> **Agent URL:** https://cursor.com/agents/bc-019fe37e-1d17-72d7-8421-1228c564bedb
+> **Audience:** Claude Code on Jason’s **laptop** (primary coding + deploy agent).
+> **Author:** Cursor cloud agent `bc-019fe37e-1d17-72d7-8421-1228c564bedb` ("Mistral AI code review").
 > **Branch:** `cursor/bug-audit-handoff-bedb`
+> **PR:** https://github.com/jasonpalmer1/wafergraph-mcp/pull/1
 
 ---
 
-## 0. Status of prior Mistral work
+## 0. Read this first (deploy reality)
 
-**Nothing was done before this run.** This cloud agent *is* the run named **"Mistral AI code review"**. It started clean; this handoff + the fixes below are the work product.
+**Sites and Workers are deployed from Jason’s machine, not from this cloud agent / not via GitHub Actions.**
 
-**Sous:** not accessible here — leave to the separate chat.
+1. Pull or cherry-pick this PR into `~/projects/wafergraph-mcp` (or local path).
+2. Apply sibling patches from `docs/ready-fixes/` into each `~/projects/<repo>`.
+3. Deploy with that repo’s wrangler/pages commands.
 
-**Write access:** only `wafergraph-mcp`. Sibling repos cannot be pushed from this agent. Ready-to-apply patches for them are in `docs/ready-fixes/`.
+Full map: **`docs/CLAUDE_LOCAL_PICKUP.md`**.  
+Feature ideas / stubs: **`docs/FEATURE_SCAFFOLD.md`**.
+
+Sous = separate chat. Do not duplicate.
 
 ---
 
-## 1. What this agent did
+## 1. What the cloud agent completed
 
 | Work | Status |
 |---|---|
-| Full audit of wafergraph-mcp + 5 public sibling repos | Done |
-| Fix High + key Medium bugs in **wafergraph-mcp** | **Done in this PR** (see §2) |
-| Ready-to-apply patches for siblings | **Written** → `docs/ready-fixes/` |
-| Sous | Out of scope |
+| Cross-repo bug audit | Done |
+| wafergraph-mcp High/Medium/Low fixes + efficiency | **Done on this branch** |
+| Ready-fixes for siblings (no push access) | `docs/ready-fixes/*` |
+| Rate-limit + ctxload scaffolds | `src/ratelimit.ts`, `src/tools/ctxload.ts` (not wired to prod paths yet) |
+| Local pickup + feature notes for Claude | `docs/CLAUDE_LOCAL_PICKUP.md`, `docs/FEATURE_SCAFFOLD.md` |
 
-`npm run typecheck` passes after the wafergraph-mcp fixes.
-
----
-
-## 2. wafergraph-mcp — FIXED in this PR
-
-| ID | Issue | Fix |
-|---|---|---|
-| H1 | `filter_companies` seg+sub independent | Same-membership join when both set (`screen.ts`) |
-| H2 | `find_paths_between` DFS missed short paths | BFS by hop length (`graphtools.ts`) |
-| H3 | `simulate_disruption` ignored tickers | `resolveCompany` + ticker map |
-| M1+M2 | Cache throw on refresh fail / stampede | Stale-on-error + inflight coalesce (`data.ts`) |
-| M3 | Hardcoded “565” | Softened to “hundreds” in tool copy / landing / CLAUDE |
-| M4 | Country aliases only in geo | `normalizeCountryQuery` / `resolveCountry` in `shared.ts`; used by screen + disruption |
-| M5 | `compare_companies` promised unique | Description matches payload (shared only) |
-| M6 | Portfolio segment shares >100% | Documented in `interpretation` |
-| M7 | `rank_by_market_cap` returned null caps | Rank priced only + coverage note |
-| M8 | Silent input truncation | Truncation note on `find_common_suppliers` |
-| M10 | `await recordUsage` | `void recordUsage` everywhere |
-| L5 | `HEAD /` → 404 | HEAD handled like GET |
-| L6 | Version drift | McpServer version → `1.2.1` |
-
-### Still open (lower priority / intentional tradeoffs)
-
-- M9 `walkChain(..., "both")` upstream-wins on bidirectional edges — document or dual-walk later
-- M11 `get_deals` segment filter vs null-id party name-match
-- M12 public expensive graph tools (v1 intentional; add rate limits if abused)
-- L1–L4, L7–L9 — see `docs/BUG_AUDIT_wafergraph-mcp.md`
-- Intentional non-bugs (no auth, depth cap 2, field whitelist, country=HQ) — **do not “fix”**
-
-After merge: deploy with `npm run deploy`, then `node scripts/smoke.mjs https://mcp.wafergraph.com`.
+`npm run typecheck` should pass after pull.
 
 ---
 
-## 3. Sibling repos — Claude must apply
+## 2. wafergraph-mcp — fixed this branch (cumulative)
 
-Open each file in `docs/ready-fixes/` in a Claude session **in that repo** and apply in this order:
+### Correctness
+- H1 filter seg+sub same membership
+- H2 path search BFS (+ O(1) queue cursor)
+- H3 / L2 tickers everywhere via `resolveCompany` on `Graph.byTicker`
+- M4 country aliases shared (`normalizeCountryQuery`) including search / single-source / connectivity
+- M9 `walkChain("both")` independent up/down walks + `dual_role_company_ids`
+- M11 `get_deals` uses `resolvePartyCompany` (null-id name fallback)
+- L1 single `companyRef` from shared (includes country)
+- L3 defensive `?? ""` / `?? []` on hot paths
+- L4 landing origin HTML-escaped
+- L7 smoke light shape asserts
+- L8 `cacheAgeMs` surfaced on `get_dataset_stats`
+- L9 self-test client names = exact set (not prefix)
+- M1/M2 cache stale-on-error + inflight
+- M3 softened “565” copy
+- M5–M8 compare description, portfolio note, priced rank, truncation note
+- M10 `void recordUsage`
+- HEAD `/`; McpServer version 1.2.1
 
-1. **`worldcup-bracket.md`** — CRITICAL (IDOR PUT, XSS → admin, pick validation, CORS)
-2. **`jasonwpalmer-com.md`** — High (CSP visit-log, subscribe rate limit, Resend `ok`)
-3. **`go-no-go.md`** — High (verify all killers / drop unverified; purpose veto; null verdicts)
-4. **`claude-code-setup.md`** — High (ledger path; SessionEnd blast radius; monday grants)
-5. **`react-canvas-force-graph.md`** — Medium (stale callback; visual props; resize)
+### Efficiency / org
+- `buildGraph` identity-cached against companies array
+- `Graph.byTicker` built once per graph
+- Graphtools use `loadGraph()` from `src/tools/ctxload.ts`
+- Duplicate helpers removed from `mcp-agent.ts`
 
-Index: [`docs/ready-fixes/README.md`](docs/ready-fixes/README.md).
+### Still open / optional
+- Move tools 1–9 into `src/tools/core.ts` (FEATURE_SCAFFOLD §A1)
+- Wire `src/ratelimit.ts` behind env flag if abused (§A2)
+- `batch_resolve` already exists as `resolve_ticker` — don’t duplicate; see scaffold for compact mode etc.
+- M12 public expensive tools — intentional v1
+
+---
+
+## 3. Your next actions on the laptop (priority)
+
+1. **wafergraph-mcp:** merge/pull branch → `npm run typecheck` → `npm run deploy` → `node scripts/smoke.mjs https://mcp.wafergraph.com`
+2. **worldcup-bracket:** apply `docs/ready-fixes/worldcup-bracket.md` → deploy (**CRITICAL**)
+3. **jasonwpalmer-com:** apply `docs/ready-fixes/jasonwpalmer-com.md` → build → pages deploy
+4. **go-no-go / claude-code-setup / force-graph:** apply matching ready-fixes locally
+5. Optional features: `docs/FEATURE_SCAFFOLD.md`
 
 ---
 
@@ -79,7 +85,10 @@ Index: [`docs/ready-fixes/README.md`](docs/ready-fixes/README.md).
 
 | File | Purpose |
 |---|---|
-| `AUDIT_HANDOFF_FOR_CLAUDE.md` | This index — **start here** |
-| `docs/BUG_AUDIT_wafergraph-mcp.md` | Original full wafergraph findings |
-| `docs/ready-fixes/*` | Concrete patches for sibling repos |
-| `CLAUDE.md` | Short pointer under “Audit handoff” |
+| `AUDIT_HANDOFF_FOR_CLAUDE.md` | This index |
+| `docs/CLAUDE_LOCAL_PICKUP.md` | **Local paths + deploy commands** |
+| `docs/FEATURE_SCAFFOLD.md` | Next features + stub guidance |
+| `docs/BUG_AUDIT_wafergraph-mcp.md` | Original finding detail |
+| `docs/ready-fixes/*` | Sibling-repo patches (apply on laptop) |
+| `src/ratelimit.ts` | Optional RL scaffold (unwired) |
+| `src/tools/ctxload.ts` | Shared loadGraph helper |

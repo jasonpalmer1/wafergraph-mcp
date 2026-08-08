@@ -87,12 +87,17 @@ scoped `CF_API_TOKEN` that shadows the wrangler OAuth session and fails with aut
 
 ---
 
-## Audit handoff
+## Audit handoff / Claude pickup
 
-Start at **`AUDIT_HANDOFF_FOR_CLAUDE.md`**. wafergraph-mcp High + key Medium bugs from the
-2026-08-08 audit are fixed on this branch; sibling-repo patches (worldcup-bracket CRITICAL, etc.)
-are ready to apply under **`docs/ready-fixes/`** (this agent cannot push those repos). Sous is
-out of scope (separate chat). Detail: `docs/BUG_AUDIT_wafergraph-mcp.md`.
+**Deploy is local (Jason’s machine), not this cloud agent.** Start at:
+
+1. **`docs/CLAUDE_LOCAL_PICKUP.md`** — where repos live, how to pull patches, deploy commands
+2. **`AUDIT_HANDOFF_FOR_CLAUDE.md`** — what was fixed / what’s left
+3. **`docs/FEATURE_SCAFFOLD.md`** — next features + stubs (`src/ratelimit.ts`, `src/tools/ctxload.ts`)
+4. **`docs/ready-fixes/`** — apply on laptop into sibling `~/projects/*` repos (no cloud push access)
+5. **`docs/BUG_AUDIT_wafergraph-mcp.md`** — finding detail
+
+Sous is out of scope (separate chat).
 
 ---
 

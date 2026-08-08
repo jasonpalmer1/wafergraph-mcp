@@ -17,12 +17,12 @@
 // `edge_coverage` in its payload and treats a thin/empty result as
 // "not documented", never as "does not exist."
 import { z } from "zod";
-import { getCompanies } from "../data";
-import { buildGraph, findCompany, suppliersOf, customersOf, type Graph } from "../graph";
+import { resolveCompany, suppliersOf, customersOf } from "../graph";
 import type { Company } from "../types";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
 import { jsonResult, errorResult, companyRef, normalizeCountryQuery, type ToolRegistrar } from "./shared";
+import { loadGraph } from "./ctxload";
 
 // ---- shared local helpers ----------------------------------------------
 
@@ -32,8 +32,8 @@ import { jsonResult, errorResult, companyRef, normalizeCountryQuery, type ToolRe
 // "doesn't exist."
 function edgeCoverage(companies: Company[]) {
   const total = companies.length;
-  const withCustomers = companies.filter((c) => c.key_customers.length > 0).length;
-  const withSuppliers = companies.filter((c) => c.key_suppliers.length > 0).length;
+  const withCustomers = companies.filter((c) => (c.key_customers ?? []).length > 0).length;
+  const withSuppliers = companies.filter((c) => (c.key_suppliers ?? []).length > 0).length;
   return {
     total_companies: total,
     companies_with_documented_customers: withCustomers,
@@ -66,16 +66,6 @@ function suggestCompanies(companies: Company[], query: string, max = 5) {
     .sort((a, b) => b.score - a.score)
     .slice(0, max)
     .map((x) => ({ id: x.c.id, name: x.c.name }));
-}
-
-function buildTickerMap(companies: Company[]): Map<string, Company> {
-  const m = new Map<string, Company>();
-  for (const c of companies) if (c.ticker) m.set(c.ticker.toUpperCase(), c);
-  return m;
-}
-
-function resolveCompany(graph: Graph, byTicker: Map<string, Company>, raw: string): Company | undefined {
-  return findCompany(graph, raw) ?? byTicker.get(raw.trim().toUpperCase());
 }
 
 const subsegmentKey = (segment: string, subsegment: string) => `${segment}::${subsegment}`;
@@ -115,18 +105,16 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ from, to, max_depth, direction, limit }) => {
       void recordUsage(ctx.env, "find_paths_between", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
-      const byTicker = buildTickerMap(companies);
+      const { companies, graph } = await loadGraph();
 
-      const fromCompany = resolveCompany(graph, byTicker, from);
+      const fromCompany = resolveCompany(graph, from);
       if (!fromCompany) {
         return errorResult(`No company found for "${from}".`, {
           hint: "Use search_companies to find a valid id, name, or ticker.",
           suggestions: suggestCompanies(companies, from),
         });
       }
-      const toCompany = resolveCompany(graph, byTicker, to);
+      const toCompany = resolveCompany(graph, to);
       if (!toCompany) {
         return errorResult(`No company found for "${to}".`, {
           hint: "Use search_companies to find a valid id, name, or ticker.",
@@ -149,10 +137,12 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       function search(mode: "down" | "up"): { paths: string[][]; capped: boolean } {
         const results: string[][] = [];
         let explored = 0;
+        // Index cursor instead of shift() — O(1) pop on large frontiers.
         const queue: Array<{ node: string; path: string[] }> = [{ node: src.id, path: [src.id] }];
+        let qi = 0;
 
-        while (queue.length > 0 && results.length < cap && explored < EXPLORATION_BUDGET) {
-          const { node, path } = queue.shift()!;
+        while (qi < queue.length && results.length < cap && explored < EXPLORATION_BUDGET) {
+          const { node, path } = queue[qi++]!;
           explored++;
           const depthSoFar = path.length - 1;
           if (depthSoFar >= depth) continue;
@@ -267,17 +257,15 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
         });
       }
 
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
+      const { companies, graph } = await loadGraph();
       const byId = graph.byId;
-      const byTicker = buildTickerMap(companies);
 
       let removedIds: Set<string>;
       let criterion: "company" | "country" | "segment";
       let criterionValue: string;
 
       if (company_id) {
-        const c = resolveCompany(graph, byTicker, company_id);
+        const c = resolveCompany(graph, company_id);
         if (!c) {
           return errorResult(`No company found for "${company_id}".`, {
             hint: "Use search_companies to find a valid id, name, or ticker.",
@@ -428,18 +416,17 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ segment, country, limit }) => {
       void recordUsage(ctx.env, "find_single_source_dependencies", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
+      const { companies, graph } = await loadGraph();
       const byId = graph.byId;
 
       const seg = segment?.trim().toLowerCase();
-      const ctry = country?.trim().toLowerCase();
+      const ctry = country ? normalizeCountryQuery(country) : undefined;
       let scope = companies;
       if (seg) scope = scope.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg));
       if (ctry) scope = scope.filter((c) => c.country.toLowerCase() === ctry);
       if (scope.length === 0) {
         return errorResult("No companies match the given scope.", {
-          hint: "Use get_segments / get_country_exposure for valid segment/country values.",
+          hint: "Use get_segments / list_countries for valid segment/country values (aliases like USA/UK work).",
         });
       }
 
@@ -530,17 +517,16 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ metric, segment, country, limit }) => {
       void recordUsage(ctx.env, "rank_by_connectivity", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
+      const { companies, graph } = await loadGraph();
 
       const seg = segment?.trim().toLowerCase();
-      const ctry = country?.trim().toLowerCase();
+      const ctry = country ? normalizeCountryQuery(country) : undefined;
       let scope = companies;
       if (seg) scope = scope.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg));
       if (ctry) scope = scope.filter((c) => c.country.toLowerCase() === ctry);
       if (scope.length === 0) {
         return errorResult("No companies match the given scope.", {
-          hint: "Use get_segments / get_country_exposure for valid segment/country values.",
+          hint: "Use get_segments / list_countries for valid segment/country values (aliases like USA/UK work).",
         });
       }
 
@@ -617,9 +603,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
         });
       }
 
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
-      const byTicker = buildTickerMap(companies);
+      const { companies, graph } = await loadGraph();
 
       let inputCompanies: Company[];
       let unresolved: string[] = [];
@@ -637,7 +621,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       } else {
         const resolved: Company[] = [];
         for (const raw of company_ids!) {
-          const c = resolveCompany(graph, byTicker, raw);
+          const c = resolveCompany(graph, raw);
           if (c && !resolved.some((r) => r.id === c.id)) resolved.push(c);
           else if (!c) unresolved.push(raw);
         }

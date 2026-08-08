@@ -80,12 +80,28 @@ const CASES = {
   get_dataset_stats: {},
 };
 
-function preview(result) {
+/** Light shape checks — still success-oriented, but empty/wrong payloads fail. */
+const ASSERTS = {
+  get_company: (d) => d?.company?.id === "tsmc",
+  resolve_ticker: (d) => Array.isArray(d?.results) && typeof d?.matched_count === "number",
+  rank_by_market_cap: (d) => Array.isArray(d?.results) && d.results.every((r) => typeof r.market_cap_usd_b === "number"),
+  find_paths_between: (d) => Array.isArray(d?.paths),
+  get_deal: (d) => typeof d?.id === "string" && d.id.includes("amd"),
+  get_dataset_stats: (d) => typeof d?.counts?.companies === "number" && d.counts.companies > 0,
+  simulate_disruption: (d) => d?.removed?.criterion === "company",
+};
+
+function preview(result, toolName) {
   const text = result?.content?.[0]?.text ?? "";
   try {
     const payload = JSON.parse(text);
     if (payload.error) return { ok: false, note: `tool returned error: ${payload.error}` };
-    const keys = Object.keys(payload.data ?? {});
+    const data = payload.data ?? {};
+    const assert = ASSERTS[toolName];
+    if (assert && !assert(data)) {
+      return { ok: false, note: `shape assert failed for ${toolName}; keys: ${Object.keys(data).slice(0, 8).join(", ")}` };
+    }
+    const keys = Object.keys(data);
     return { ok: true, note: `${text.length} bytes, data keys: ${keys.slice(0, 6).join(", ")}` };
   } catch {
     return { ok: false, note: `non-JSON response: ${text.slice(0, 120)}` };
@@ -116,7 +132,7 @@ const run = async () => {
     process.stdout.write(`  ${name.padEnd(32)}`);
     try {
       const result = await rpc("tools/call", { name, arguments: CASES[name] });
-      const { ok, note } = preview(result);
+      const { ok, note } = preview(result, name);
       if (ok) {
         pass++;
         console.log(`ok    ${note}`);

@@ -15,8 +15,8 @@
 //   2. `confidence` is a per-deal quality flag on the record itself. It is
 //      surfaced as-is; nothing here averages it into a derived score.
 import { z } from "zod";
-import { getCompanies, getDeals, getTaxonomy, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE } from "../data";
-import { buildGraph, findCompany, type Graph } from "../graph";
+import { getCompanies, getDeals, getTaxonomy, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE, cacheAgeMs } from "../data";
+import { buildGraph, resolveCompany, type Graph } from "../graph";
 import type { Company, Deal, DealParty } from "../types";
 import { attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
@@ -26,8 +26,9 @@ import { jsonResult, errorResult, companyRef, briefRef, tallyBy, type ToolRegist
 
 // Resolve one deal party to a dataset company: id match first, then
 // case-insensitive exact name match. Returns the match method so callers can
-// tell a strong (id) match from a weaker (name-only) one.
-function resolvePartyCompany(
+// tell a strong (id) match from a weaker (name-only) one. Exported so
+// get_deals (mcp-agent) can use the same null-id name fallback.
+export function resolvePartyCompany(
   companies: Company[],
   graph: Graph,
   party: DealParty,
@@ -163,9 +164,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
       const [companies, deals] = await Promise.all([getCompanies(), getDeals()]);
       const graph = buildGraph(companies);
 
-      const byTicker = new Map<string, Company>();
-      for (const c of companies) if (c.ticker) byTicker.set(c.ticker.toUpperCase(), c);
-      const resolved = findCompany(graph, company) ?? byTicker.get(company.trim().toUpperCase()) ?? null;
+      const resolved = resolveCompany(graph, company) ?? null;
       const targetId = resolved?.id ?? null;
       const targetName = (resolved?.name ?? company).trim().toLowerCase();
 
@@ -498,6 +497,11 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
           },
           data_source_mode: DATA_SOURCE_MODE,
           taxonomy_snapshot_date: TAXONOMY_SNAPSHOT_DATE,
+          live_cache_age_ms: cacheAgeMs(),
+          live_cache_note:
+            "live_cache_age_ms is the age of the oldest in-isolate companies/deals cache entry (null = cold isolate, " +
+            "not yet fetched). On upstream fetch failure the server may serve a stale cache entry rather than fail " +
+            "every tool — check this age if results look outdated.",
           known_limitations,
         },
         attribution: attributionGeneric(),

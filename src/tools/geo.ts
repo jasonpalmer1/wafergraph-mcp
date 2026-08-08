@@ -10,7 +10,7 @@
 // misread of the data — so every response says so, not just the tool docs.
 import { z } from "zod";
 import { getCompanies } from "../data";
-import { buildGraph, findCompany, suppliersOf, customersOf, type Graph } from "../graph";
+import { buildGraph, resolveCompany, suppliersOf, customersOf, type Graph } from "../graph";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
 import {
@@ -420,17 +420,17 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
         "un-dependent. " +
         HQ_CAVEAT,
       inputSchema: {
-        id: z.string().describe("Focal company id (snake_case, e.g. 'tsmc') or exact company name."),
+        id: z.string().describe("Focal company id, exact name, or ticker."),
       },
     },
     async ({ id }) => {
       void recordUsage(ctx.env, "get_upstream_concentration", ctx.isSelfTest());
       const companies = await getCompanies();
       const graph: Graph = buildGraph(companies);
-      const focal = findCompany(graph, id);
+      const focal = resolveCompany(graph, id);
       if (!focal) {
         return errorResult(`No company found for "${id}".`, {
-          hint: "Use search_companies to find a valid id or name.",
+          hint: "Use search_companies to find a valid id, name, or ticker.",
         });
       }
 

@@ -9,7 +9,7 @@
 // tallyBy) rather than re-deriving them.
 import { z } from "zod";
 import { getCompanies, getTaxonomy, TAXONOMY_SNAPSHOT_DATE } from "../data";
-import { buildGraph, findCompany, suppliersOf, customersOf } from "../graph";
+import { buildGraph, resolveCompany, suppliersOf, customersOf } from "../graph";
 import type { Company } from "../types";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
@@ -313,10 +313,9 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       title: "Find similar companies",
       description:
         "Nearest structural neighbours to one focal company, ranked by a transparent Jaccard-similarity score — not a " +
-        "market or competitive judgment. Use search_companies or resolve_ticker first if you only have a ticker or an " +
-        "approximate name, then pass the resolved id here.",
+        "market or competitive judgment. Accepts id, name, or ticker.",
       inputSchema: {
-        id: z.string().describe("Focal company id (snake_case, e.g. 'tsmc') or exact name to find neighbours for."),
+        id: z.string().describe("Focal company id, exact name, or ticker to find neighbours for."),
         limit: z.number().int().min(1).max(25).optional().default(10).describe("How many similar companies to return, 1-25. Default 10."),
       },
     },
@@ -324,10 +323,10 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       void recordUsage(ctx.env, "find_similar_companies", ctx.isSelfTest());
       const companies = await getCompanies();
       const graph = buildGraph(companies);
-      const focal = findCompany(graph, id);
+      const focal = resolveCompany(graph, id);
       if (!focal) {
         return errorResult(`No company found for "${id}".`, {
-          hint: "Use search_companies or resolve_ticker to find a valid id or name.",
+          hint: "Use search_companies or resolve_ticker to find a valid id, name, or ticker.",
         });
       }
 
