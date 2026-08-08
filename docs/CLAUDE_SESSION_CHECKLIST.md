@@ -10,6 +10,8 @@ Copy this into your first reply when picking up cloud-agent work. Deploy is **al
 
 ## 1. Ship wafergraph-mcp (this PR)
 
+Expect **v1.3.2 / 33 tools** after deploy (`find_substitutes`, `explain_relationship`, `recommend_tools`, …).
+
 ```bash
 cd ~/projects/wafergraph-mcp   # adjust if different
 git fetch origin
@@ -22,7 +24,7 @@ node scripts/smoke.mjs https://mcp.wafergraph.com
 
 - [ ] Typecheck green
 - [ ] Deploy succeeded
-- [ ] Smoke: all tools pass (shape asserts included)
+- [ ] Smoke: all tools pass (shape asserts included; includes new tools)
 
 ## 2. Sibling security / correctness (priority order)
 
