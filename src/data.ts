@@ -153,13 +153,42 @@ export async function getTaxonomy(): Promise<Taxonomy> {
   return taxonomySnapshot as Taxonomy;
 }
 
-// Age (ms) of the oldest currently-cached LIVE dataset, for surfacing
-// freshness. Returns null if nothing is cached yet. Doesn't cover taxonomy
-// (see TAXONOMY_SNAPSHOT_DATE for that one's provenance instead).
+function entryAgeMs(entry: CacheEntry<unknown> | null, now: number): number | null {
+  if (!entry) return null;
+  return now - entry.fetchedAt;
+}
+
+/** True when serving past-TTL data (including retryAfter backoff after a failed refresh). */
+function entryIsStale(entry: CacheEntry<unknown> | null, now: number): boolean {
+  if (!entry) return false;
+  if (entry.retryAfter && now < entry.retryAfter) return true;
+  return now - entry.fetchedAt >= TTL_MS;
+}
+
+export interface LiveFreshness {
+  /** Age of the oldest live cache entry (companies or deals). null = cold isolate. */
+  live_cache_age_ms: number | null;
+  companies_age_ms: number | null;
+  deals_age_ms: number | null;
+  /** True when at least one live cache is past TTL / in post-failure backoff. */
+  stale: boolean;
+}
+
+/** Per-dataset freshness for tool payloads. Taxonomy is vendored — see TAXONOMY_SNAPSHOT_DATE. */
+export function liveFreshness(): LiveFreshness {
+  const now = Date.now();
+  const companies_age_ms = entryAgeMs(companiesCache, now);
+  const deals_age_ms = entryAgeMs(dealsCache, now);
+  const ages = [companies_age_ms, deals_age_ms].filter((v): v is number => v != null);
+  return {
+    companies_age_ms,
+    deals_age_ms,
+    live_cache_age_ms: ages.length ? Math.max(...ages) : null,
+    stale: entryIsStale(companiesCache, now) || entryIsStale(dealsCache, now),
+  };
+}
+
+/** Age (ms) of the oldest currently-cached LIVE dataset, or null if cold. */
 export function cacheAgeMs(): number | null {
-  const stamps = [companiesCache?.fetchedAt, dealsCache?.fetchedAt].filter(
-    (v): v is number => typeof v === "number",
-  );
-  if (stamps.length === 0) return null;
-  return Date.now() - Math.min(...stamps);
+  return liveFreshness().live_cache_age_ms;
 }

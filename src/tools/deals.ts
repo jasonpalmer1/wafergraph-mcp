@@ -1,4 +1,5 @@
-// Deal-focused tools over wafergraph's 74-deal M&A corpus. Follows the same
+// Deal-focused tools over wafergraph's ~74-deal curated corpus (acquisition,
+// investment, capacity, partnership, … — not acquisitions-only). Follows the same
 // pattern as the original 9 tools in mcp-agent.ts (see shared.ts), lifted
 // into its own module so mcp-agent.ts can register it via a single
 // `registerDealTools(server, ctx)` call.
@@ -229,7 +230,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
     {
       title: "Get M&A activity summary",
       description:
-        "Aggregate view of the full 74-deal M&A corpus: counts by year (from announced date), by deal type, and by " +
+        "Aggregate view of the full ~74-deal curated corpus: counts by year (from announced date), by deal type, and by " +
         "status; total and median disclosed value; and the largest deals by value. Value figures are computed only " +
         "over the subset of deals with a disclosed value_usd and are never extrapolated to cover the undisclosed ones.",
       inputSchema: {

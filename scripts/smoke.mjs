@@ -55,7 +55,7 @@ const CASES = {
   get_company: { id: "tsmc" },
   get_segments: {},
   get_supply_chain: { id: "nvidia", direction: "up", depth: 2 },
-  get_deals: { year: 2020, status: "completed" },
+  get_deals: { type: "acquisition", year: 2020, status: "completed", sort_by: "announced" },
   compare_companies: { ids: ["nvidia", "amd"] },
   get_country_exposure: { segment: "foundry" },
   find_chokepoints: { segment: "foundry" },
@@ -97,7 +97,10 @@ const CASES = {
 const ASSERTS = {
   search_companies: (d) =>
     Array.isArray(d?.results) && d.results.some((r) => r.id === "nvidia" || r.ticker === "NVDA"),
-  get_company: (d) => d?.company?.id === "tsmc",
+  get_company: (d) => d?.company?.id === "tsmc" && Array.isArray(d?.suppliers),
+  get_deals: (d) =>
+    Array.isArray(d?.results) &&
+    d.results.every((r) => r.type === "acquisition" && String(r.announced ?? "").startsWith("2020")),
   compare_companies: (d) =>
     Array.isArray(d?.companies) &&
     Array.isArray(d?.shared_suppliers?.companies) &&
@@ -134,8 +137,12 @@ function preview(result, toolName) {
   try {
     const payload = JSON.parse(text);
     if (payload.error) return { ok: false, note: `tool returned error: ${payload.error}` };
-    if (!payload.freshness || !("live_cache_age_ms" in payload.freshness)) {
-      return { ok: false, note: `missing freshness.live_cache_age_ms on ${toolName}` };
+    if (
+      !payload.freshness ||
+      !("live_cache_age_ms" in payload.freshness) ||
+      typeof payload.freshness.stale !== "boolean"
+    ) {
+      return { ok: false, note: `missing freshness.{live_cache_age_ms,stale} on ${toolName}` };
     }
     const data = payload.data ?? {};
     const assert = ASSERTS[toolName];

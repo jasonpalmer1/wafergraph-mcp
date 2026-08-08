@@ -13,6 +13,7 @@ import {
   companyRef,
   normalizeCountryQuery,
   resolvePartyCompany,
+  sortIdsByMarketCap,
   type ToolRegistrar,
 } from "./shared";
 import { loadGraph, loadAll } from "./ctxload";
@@ -136,10 +137,12 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
       // suppliers), which made this response ~32KB — heavy for an LLM
       // context window. Cap each side generously and disclose the
       // truncation; most companies are far under the cap and unchanged.
+      // Sort by market cap before slicing so the kept window is the important
+      // counterparties, not arbitrary Set insertion order.
       // Deeper walks belong to get_supply_chain. compact=true uses a tighter cap.
       const EDGE_CAP = compact ? 25 : 80;
-      const supplierIds = suppliersOf(graph, company.id);
-      const customerIds = customersOf(graph, company.id);
+      const supplierIds = sortIdsByMarketCap(graph, suppliersOf(graph, company.id));
+      const customerIds = sortIdsByMarketCap(graph, customersOf(graph, company.id));
       const suppliers = supplierIds.slice(0, EDGE_CAP).map((sid) => companyRef(graph, sid));
       const customers = customerIds.slice(0, EDGE_CAP).map((cid) => companyRef(graph, cid));
 
@@ -311,17 +314,24 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
   server.registerTool(
     "get_deals",
     {
-      title: "Get M&A deals",
+      title: "Get deals",
       description:
-        "Search wafergraph's semiconductor & AI supply-chain M&A corpus (74 acquisitions/mergers, including notable " +
-        "terminated attempts) by title/summary substring, segment, status, and/or announcement year. Returns a " +
-        "compact list capped at 30 with a total match count.",
+        "Search wafergraph's curated semiconductor & AI supply-chain deal corpus (~74 records spanning acquisition, " +
+        "investment, capacity, partnership, supply_agreement, foundry_deal, compute_deal, subsidy, and notable " +
+        "terminated attempts). Filter by title/summary substring, type, segment, status, and/or announcement year; " +
+        "sort by announced date or disclosed value. Compact list capped at 30 with a total match count.",
       inputSchema: {
         query: z.string().optional().describe("Case-insensitive substring match against deal title and summary."),
         segment: z
           .string()
           .optional()
           .describe("Filter to deals where at least one named party is a company in this taxonomy segment id."),
+        type: z
+          .string()
+          .optional()
+          .describe(
+            "Filter by deal type (case-insensitive exact), e.g. 'acquisition', 'investment', 'capacity', 'partnership'.",
+          ),
         status: z
           .string()
           .optional()
@@ -333,17 +343,24 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
           .max(2100)
           .optional()
           .describe("Filter to deals whose announced date starts with this calendar year (e.g. 2020)."),
+        sort_by: z
+          .enum(["announced", "value"])
+          .optional()
+          .default("announced")
+          .describe("Sort matches before the 30-row cap. 'announced' newest-first (default); 'value' highest disclosed USD first (nulls last)."),
       },
     },
-    async ({ query, segment, status, year }) => {
+    async ({ query, segment, type, status, year, sort_by }) => {
       void recordUsage(ctx.env, "get_deals", ctx.isSelfTest());
       const { companies, deals, graph } = await loadAll();
       const q = query?.trim().toLowerCase();
       const seg = segment?.trim().toLowerCase();
+      const typ = type?.trim().toLowerCase();
       const st = status?.trim().toLowerCase();
 
       const matches = deals.filter((d) => {
         if (q && !((d.title ?? "").toLowerCase().includes(q) || (d.summary ?? "").toLowerCase().includes(q))) return false;
+        if (typ && (d.type ?? "").toLowerCase() !== typ) return false;
         if (st && !(d.status ?? "").toLowerCase().includes(st)) return false;
         if (year != null && !(d.announced ?? "").startsWith(String(year))) return false;
         if (seg) {
@@ -357,8 +374,20 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
         return true;
       });
 
+      const sorted = matches.slice().sort((a, b) => {
+        if ((sort_by ?? "announced") === "value") {
+          const av = a.value_usd;
+          const bv = b.value_usd;
+          if (av == null && bv == null) return (b.announced ?? "").localeCompare(a.announced ?? "");
+          if (av == null) return 1;
+          if (bv == null) return -1;
+          return bv - av;
+        }
+        return (b.announced ?? "").localeCompare(a.announced ?? "");
+      });
+
       const CAP = 30;
-      const results = matches.slice(0, CAP).map((d) => ({
+      const results = sorted.slice(0, CAP).map((d) => ({
         id: d.id,
         title: d.title,
         type: d.type,
@@ -380,9 +409,11 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
           results,
           total: matches.length,
           returned: results.length,
+          sort_by: sort_by ?? "announced",
           filters: {
             query: query ?? null,
             segment: segment ?? null,
+            type: type ?? null,
             status: status ?? null,
             year: year ?? null,
           },
@@ -421,15 +452,22 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
 
         const resolved: { input: string; company: (typeof companies)[number] }[] = [];
         const unresolved: string[] = [];
+        const duplicate_inputs_collapsed: string[] = [];
         for (const raw of ids) {
           const c = resolveCompany(graph, raw);
-          if (c && !resolved.some((r) => r.company.id === c.id)) resolved.push({ input: raw, company: c });
-          else if (!c) unresolved.push(raw);
+          if (c) {
+            if (resolved.some((r) => r.company.id === c.id)) duplicate_inputs_collapsed.push(raw);
+            else resolved.push({ input: raw, company: c });
+          } else unresolved.push(raw);
         }
         if (resolved.length < 2) {
-          return errorResult("Need at least 2 resolvable companies to compare.", {
+          return errorResult("Need at least 2 distinct resolvable companies to compare.", {
             unresolved,
-            hint: "Use search_companies to find valid ids.",
+            duplicate_inputs_collapsed,
+            unique_resolved: resolved.map((r) => ({ input: r.input, id: r.company.id, name: r.company.name })),
+            hint: duplicate_inputs_collapsed.length
+              ? "Multiple inputs resolved to the same company (e.g. 'nvidia' and 'NVDA'). Pass distinct companies."
+              : "Use search_companies or resolve_ticker to find valid ids.",
           });
         }
 

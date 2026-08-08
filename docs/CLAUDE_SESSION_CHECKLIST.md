@@ -10,7 +10,7 @@ Copy this into your first reply when picking up cloud-agent work. Deploy is **al
 
 ## 1. Ship wafergraph-mcp (this PR)
 
-Expect **v1.3.5 / 36 tools** after deploy (`compare_segments`, `list_stale_companies`, `diff_supply_chains`, …).
+Expect **v1.3.6 / 36 tools** after deploy (`get_company` edge sort, richer freshness, `get_deals` type/sort, …).
 
 ```bash
 cd ~/projects/wafergraph-mcp   # adjust if different

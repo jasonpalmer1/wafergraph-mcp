@@ -6,7 +6,7 @@
 // them without importing from the agent (which would be circular).
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { companyUrl } from "../attribution";
-import { cacheAgeMs } from "../data";
+import { liveFreshness } from "../data";
 import type { Company, DealParty } from "../types";
 import type { Graph } from "../graph";
 
@@ -25,10 +25,24 @@ export function jsonResult(payload: unknown) {
     payload !== null && typeof payload === "object" && !Array.isArray(payload)
       ? {
           ...(payload as Record<string, unknown>),
-          freshness: { live_cache_age_ms: cacheAgeMs() },
+          freshness: liveFreshness(),
         }
       : payload;
   return { content: [{ type: "text" as const, text: JSON.stringify(body) }] };
+}
+
+/** Sort company ids by market cap descending (unpriced last), then name. */
+export function sortIdsByMarketCap(graph: Graph, ids: string[]): string[] {
+  return ids.slice().sort((a, b) => {
+    const ac = graph.byId.get(a)?.market_cap_usd_b;
+    const bc = graph.byId.get(b)?.market_cap_usd_b;
+    if (ac == null && bc == null) {
+      return (graph.byId.get(a)?.name ?? a).localeCompare(graph.byId.get(b)?.name ?? b);
+    }
+    if (ac == null) return 1;
+    if (bc == null) return -1;
+    return bc - ac;
+  });
 }
 
 export function errorResult(message: string, extra?: Record<string, unknown>) {

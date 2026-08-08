@@ -93,10 +93,19 @@ leaders, edge density, shared top HQ countries. Smoke + ROUTING included.
 `npm run check:versions` asserts package.json / server.json / version.ts agree.
 Smoke asserts `tools/list.length === TOOL_COUNT`.
 
-### A9. ✅ `get_deals` status + year filters
+### A9. ✅ `get_deals` filters + sort
 
-Optional `status` (substring) and `year` (announced prefix) on `get_deals` —
-no new tool; agents no longer need to post-filter the 30-row page.
+Optional `status`, `year`, `type` (exact), and `sort_by` (`announced`|`value`) on
+`get_deals`. Description corrected: corpus is multi-type, not acquisitions-only.
+
+### A10. ✅ `get_company` edge importance sort
+
+Neighbor lists sorted by market cap before EDGE_CAP slice (was insertion order).
+
+### A11. ✅ Richer freshness block
+
+`jsonResult` attaches `liveFreshness()`:
+`{ live_cache_age_ms, companies_age_ms, deals_age_ms, stale }`.
 
 ---
 
