@@ -9,7 +9,7 @@ export function renderLanding(origin: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>wafergraph MCP — semiconductor supply-chain data for AI agents</title>
-<meta name="description" content="Remote MCP server exposing wafergraph.com's semiconductor & AI supply-chain dataset: 565 companies, 12 segments, 74 M&A deals, and the supplier/customer graph.">
+<meta name="description" content="Remote MCP server exposing wafergraph.com's semiconductor & AI supply-chain dataset: hundreds of companies, 12 segments, M&A deals, and the supplier/customer graph.">
 <style>
   :root {
     --bg: #0b0e14;
@@ -134,7 +134,7 @@ export function renderLanding(origin: string): string {
   <p class="eyebrow">Remote MCP server</p>
   <h1>wafergraph MCP</h1>
   <p class="lede">
-    Read-only access to wafergraph.com's semiconductor &amp; AI supply-chain dataset — 565 companies across
+    Read-only access to wafergraph.com's semiconductor &amp; AI supply-chain dataset — hundreds of companies across
     12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as 30 tools any MCP-speaking
     AI agent can call directly.
   </p>

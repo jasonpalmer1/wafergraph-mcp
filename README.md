@@ -1,7 +1,7 @@
 # wafergraph-mcp
 
 A remote MCP server exposing [wafergraph.com](https://wafergraph.com)'s semiconductor & AI
-supply-chain dataset — 565 companies across 12 segments, the supplier/customer graph, and a
+supply-chain dataset — hundreds of companies across 12 segments, the supplier/customer graph, and a
 74-deal M&A corpus — as 30 read-only tools any MCP-speaking AI agent can call directly.
 
 No auth, no cost, read-only. Streamable HTTP transport at `/mcp`. Human landing page at `/`.

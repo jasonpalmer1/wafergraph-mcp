@@ -90,3 +90,35 @@ export function tallyBy<T>(items: T[], key: (item: T) => string | string[]): Arr
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, count }));
 }
+
+// Small set of obvious aliases for a ~29-country dataset. Matching itself is
+// always case-insensitive exact-string against the real values in companies.json
+// — this only maps common shorthands onto those real strings. Shared so every
+// tool that takes a country input behaves the same (geo, screen, disruption…).
+const COUNTRY_ALIASES: Record<string, string> = {
+  usa: "united states",
+  us: "united states",
+  "u.s.": "united states",
+  "u.s.a.": "united states",
+  america: "united states",
+  uk: "united kingdom",
+  "u.k.": "united kingdom",
+  britain: "united kingdom",
+  "great britain": "united kingdom",
+  korea: "south korea",
+  "republic of korea": "south korea",
+  rok: "south korea",
+  czechia: "czech republic",
+};
+
+/** Lowercase + alias-normalize a country query string. */
+export function normalizeCountryQuery(raw: string): string {
+  const trimmed = raw.trim().toLowerCase();
+  return COUNTRY_ALIASES[trimmed] ?? trimmed;
+}
+
+/** Resolve a country query to the canonical casing used in the dataset, or undefined. */
+export function resolveCountry(companies: Company[], raw: string): string | undefined {
+  const target = normalizeCountryQuery(raw);
+  return [...new Set(companies.map((c) => c.country))].find((c) => c.toLowerCase() === target);
+}

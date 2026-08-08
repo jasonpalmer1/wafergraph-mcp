@@ -97,7 +97,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ id }) => {
-      await recordUsage(ctx.env, "get_deal", ctx.isSelfTest());
+      void recordUsage(ctx.env, "get_deal", ctx.isSelfTest());
       const [deals, companies] = await Promise.all([getDeals(), getCompanies()]);
       const graph = buildGraph(companies);
 
@@ -159,7 +159,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ company }) => {
-      await recordUsage(ctx.env, "find_deals_by_company", ctx.isSelfTest());
+      void recordUsage(ctx.env, "find_deals_by_company", ctx.isSelfTest());
       const [companies, deals] = await Promise.all([getCompanies(), getDeals()]);
       const graph = buildGraph(companies);
 
@@ -250,7 +250,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ top_n }) => {
-      await recordUsage(ctx.env, "get_ma_activity_summary", ctx.isSelfTest());
+      void recordUsage(ctx.env, "get_ma_activity_summary", ctx.isSelfTest());
       const deals = await getDeals();
 
       const by_year = tallyBy(deals, (d) => (d.announced ? d.announced.slice(0, 4) : "unknown"));
@@ -319,7 +319,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ limit, sort_by }) => {
-      await recordUsage(ctx.env, "find_consolidation_hotspots", ctx.isSelfTest());
+      void recordUsage(ctx.env, "find_consolidation_hotspots", ctx.isSelfTest());
       const [companies, deals, taxonomy] = await Promise.all([getCompanies(), getDeals(), getTaxonomy()]);
       const graph = buildGraph(companies);
       const segNames = new Map(taxonomy.segments.map((s) => [s.id, s.name]));
@@ -395,7 +395,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
       inputSchema: {},
     },
     async () => {
-      await recordUsage(ctx.env, "get_dataset_stats", ctx.isSelfTest());
+      void recordUsage(ctx.env, "get_dataset_stats", ctx.isSelfTest());
       const [companies, deals, taxonomy] = await Promise.all([getCompanies(), getDeals(), getTaxonomy()]);
       const graph = buildGraph(companies);
       const countries = new Set(companies.map((c) => c.country)).size;

@@ -13,7 +13,15 @@ import { buildGraph, findCompany, suppliersOf, customersOf } from "../graph";
 import type { Company } from "../types";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
-import { jsonResult, errorResult, briefRef, pricedCoverage, tallyBy, type ToolRegistrar } from "./shared";
+import {
+  jsonResult,
+  errorResult,
+  briefRef,
+  pricedCoverage,
+  tallyBy,
+  normalizeCountryQuery,
+  type ToolRegistrar,
+} from "./shared";
 
 const MARKET_POSITIONS = ["monopoly", "leader", "major", "challenger", "niche"] as const;
 
@@ -43,7 +51,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
     {
       title: "Filter companies",
       description:
-        "Structured multi-criteria screen over all 565 companies: exact segment/subsegment/country/market_position/" +
+        "Structured multi-criteria screen over the full company dataset: exact segment/subsegment/country/market_position/" +
         "public filters plus a market-cap range, sortable and paginated. Use this instead of search_companies when " +
         "the question is a precise filter ('leader-position analog companies in Japan under $20B') rather than a " +
         "free-text match. Unknown segment/subsegment/country values just return zero results rather than erroring — " +
@@ -70,16 +78,23 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ segment, subsegment, country, market_position, public: isPublic, min_market_cap_usd_b, max_market_cap_usd_b, has_ticker, sort_by, limit, offset }) => {
-      await recordUsage(ctx.env, "filter_companies", ctx.isSelfTest());
+      void recordUsage(ctx.env, "filter_companies", ctx.isSelfTest());
       const companies = await getCompanies();
 
       const seg = segment?.trim().toLowerCase();
       const sub = subsegment?.trim().toLowerCase();
-      const ctry = country?.trim().toLowerCase();
+      const ctry = country ? normalizeCountryQuery(country) : undefined;
 
       const scope = companies.filter((c) => {
-        if (seg && !c.segments.some((s) => s.segment.toLowerCase() === seg)) return false;
-        if (sub && !c.segments.some((s) => s.subsegment.toLowerCase() === sub)) return false;
+        // When both segment and subsegment are set, require them on the SAME
+        // membership — otherwise a multi-segment company matching A elsewhere
+        // and B elsewhere falsely passes (e.g. materials + subsystems_components).
+        if (seg && sub) {
+          if (!c.segments.some((s) => s.segment.toLowerCase() === seg && s.subsegment.toLowerCase() === sub)) return false;
+        } else {
+          if (seg && !c.segments.some((s) => s.segment.toLowerCase() === seg)) return false;
+          if (sub && !c.segments.some((s) => s.subsegment.toLowerCase() === sub)) return false;
+        }
         if (ctry && c.country.toLowerCase() !== ctry) return false;
         if (market_position && c.market_position !== market_position) return false;
         if (typeof isPublic === "boolean" && c.public !== isPublic) return false;
@@ -151,7 +166,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ segment }) => {
-      await recordUsage(ctx.env, "list_subsegments", ctx.isSelfTest());
+      void recordUsage(ctx.env, "list_subsegments", ctx.isSelfTest());
       const [taxonomy, companies] = await Promise.all([getTaxonomy(), getCompanies()]);
       const segFilter = segment?.trim().toLowerCase();
 
@@ -250,7 +265,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ segment, subsegment, limit, offset }) => {
-      await recordUsage(ctx.env, "get_subsegment", ctx.isSelfTest());
+      void recordUsage(ctx.env, "get_subsegment", ctx.isSelfTest());
       const [taxonomy, companies] = await Promise.all([getTaxonomy(), getCompanies()]);
       const segId = segment.trim().toLowerCase();
       const subId = subsegment.trim().toLowerCase();
@@ -306,7 +321,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ id, limit }) => {
-      await recordUsage(ctx.env, "find_similar_companies", ctx.isSelfTest());
+      void recordUsage(ctx.env, "find_similar_companies", ctx.isSelfTest());
       const companies = await getCompanies();
       const graph = buildGraph(companies);
       const focal = findCompany(graph, id);
@@ -386,10 +401,10 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ limit, segment, country, market_position }) => {
-      await recordUsage(ctx.env, "rank_by_market_cap", ctx.isSelfTest());
+      void recordUsage(ctx.env, "rank_by_market_cap", ctx.isSelfTest());
       const companies = await getCompanies();
       const seg = segment?.trim().toLowerCase();
-      const ctry = country?.trim().toLowerCase();
+      const ctry = country ? normalizeCountryQuery(country) : undefined;
 
       const scope = companies.filter((c) => {
         if (seg && !c.segments.some((s) => s.segment.toLowerCase() === seg)) return false;
@@ -404,8 +419,10 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
         });
       }
 
+      // Rank only priced companies — null caps must not fill a "top by market cap" list.
+      const priced = scope.filter((c) => typeof c.market_cap_usd_b === "number");
       const lim = Math.min(Math.max(limit ?? 10, 1), 100);
-      const results = [...scope].sort(byMarketCapDesc).slice(0, lim).map(briefRef);
+      const results = [...priced].sort(byMarketCapDesc).slice(0, lim).map(briefRef);
 
       return jsonResult({
         data: {
@@ -416,8 +433,12 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
           },
           results,
           total: scope.length,
+          priced_in_scope: priced.length,
           returned: results.length,
           coverage: pricedCoverage(scope),
+          note:
+            "Results include only companies with a market_cap_usd_b on file. See coverage for how many in-scope " +
+            "companies are priced vs unpriced.",
         },
         attribution: attributionGeneric(),
         links: LINKS,
@@ -443,7 +464,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ queries }) => {
-      await recordUsage(ctx.env, "resolve_ticker", ctx.isSelfTest());
+      void recordUsage(ctx.env, "resolve_ticker", ctx.isSelfTest());
       const companies = await getCompanies();
       const byId = new Map(companies.map((c) => [c.id, c]));
 

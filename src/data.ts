@@ -49,6 +49,10 @@ interface CacheEntry<T> {
 
 let companiesCache: CacheEntry<Company[]> | null = null;
 let dealsCache: CacheEntry<Deal[]> | null = null;
+// In-flight coalescing: concurrent callers past TTL share one fetch instead of
+// stampeding the origin. Cleared when the fetch settles (success or failure).
+let companiesInflight: Promise<Company[]> | null = null;
+let dealsInflight: Promise<Deal[]> | null = null;
 
 function isFresh<T>(entry: CacheEntry<T> | null): entry is CacheEntry<T> {
   return entry !== null && Date.now() - entry.fetchedAt < TTL_MS;
@@ -71,18 +75,65 @@ async function fetchJSON<T>(filename: string): Promise<T> {
   return res.json();
 }
 
+async function loadCached<T>(
+  filename: string,
+  getCache: () => CacheEntry<T> | null,
+  setCache: (entry: CacheEntry<T>) => void,
+  getInflight: () => Promise<T> | null,
+  setInflight: (p: Promise<T> | null) => void,
+): Promise<T> {
+  const cached = getCache();
+  if (isFresh(cached)) return cached.data;
+
+  const existing = getInflight();
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const data = await fetchJSON<T>(filename);
+      setCache({ data, fetchedAt: Date.now() });
+      return data;
+    } catch (err) {
+      // Prefer stale-but-present data over taking every tool down on a
+      // transient upstream/edge failure. Only throw when we have nothing.
+      const stale = getCache();
+      if (stale) return stale.data;
+      throw err;
+    } finally {
+      setInflight(null);
+    }
+  })();
+
+  setInflight(promise);
+  return promise;
+}
+
 export async function getCompanies(): Promise<Company[]> {
-  if (isFresh(companiesCache)) return companiesCache.data;
-  const data = await fetchJSON<Company[]>("companies.json");
-  companiesCache = { data, fetchedAt: Date.now() };
-  return data;
+  return loadCached(
+    "companies.json",
+    () => companiesCache,
+    (e) => {
+      companiesCache = e;
+    },
+    () => companiesInflight,
+    (p) => {
+      companiesInflight = p;
+    },
+  );
 }
 
 export async function getDeals(): Promise<Deal[]> {
-  if (isFresh(dealsCache)) return dealsCache.data;
-  const data = await fetchJSON<Deal[]>("deals.json");
-  dealsCache = { data, fetchedAt: Date.now() };
-  return data;
+  return loadCached(
+    "deals.json",
+    () => dealsCache,
+    (e) => {
+      dealsCache = e;
+    },
+    () => dealsInflight,
+    (p) => {
+      dealsInflight = p;
+    },
+  );
 }
 
 // Vendored snapshot — not fetched, no cache needed (bundled at deploy time).

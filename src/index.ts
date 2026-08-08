@@ -13,8 +13,8 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === "/" && request.method === "GET") {
-      return new Response(renderLanding(url.origin), {
+    if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
+      return new Response(request.method === "HEAD" ? null : renderLanding(url.origin), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }

@@ -22,7 +22,7 @@ import { buildGraph, findCompany, suppliersOf, customersOf, type Graph } from ".
 import type { Company } from "../types";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
-import { jsonResult, errorResult, companyRef, type ToolRegistrar } from "./shared";
+import { jsonResult, errorResult, companyRef, normalizeCountryQuery, type ToolRegistrar } from "./shared";
 
 // ---- shared local helpers ----------------------------------------------
 
@@ -114,7 +114,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ from, to, max_depth, direction, limit }) => {
-      await recordUsage(ctx.env, "find_paths_between", ctx.isSelfTest());
+      void recordUsage(ctx.env, "find_paths_between", ctx.isSelfTest());
       const companies = await getCompanies();
       const graph = buildGraph(companies);
       const byTicker = buildTickerMap(companies);
@@ -143,33 +143,34 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       const cap = limit ?? 10;
       const EXPLORATION_BUDGET = 20000;
 
+      // BFS by hop length so the first `cap` paths collected are the shortest.
+      // (DFS + early stop could fill the cap with longer paths and miss a
+      // direct edge that would have sorted first after the fact.)
       function search(mode: "down" | "up"): { paths: string[][]; capped: boolean } {
         const results: string[][] = [];
-        const budget = { explored: 0 };
-        const visited = new Set<string>([src.id]);
-        const path: string[] = [src.id];
+        let explored = 0;
+        const queue: Array<{ node: string; path: string[] }> = [{ node: src.id, path: [src.id] }];
 
-        function dfs(current: string, depthSoFar: number) {
-          if (results.length >= cap || budget.explored >= EXPLORATION_BUDGET) return;
-          budget.explored++;
-          if (depthSoFar >= depth) return;
-          const neighbors = mode === "down" ? customersOf(graph, current) : suppliersOf(graph, current);
+        while (queue.length > 0 && results.length < cap && explored < EXPLORATION_BUDGET) {
+          const { node, path } = queue.shift()!;
+          explored++;
+          const depthSoFar = path.length - 1;
+          if (depthSoFar >= depth) continue;
+          const neighbors = mode === "down" ? customersOf(graph, node) : suppliersOf(graph, node);
           for (const next of neighbors) {
-            if (results.length >= cap || budget.explored >= EXPLORATION_BUDGET) return;
+            if (results.length >= cap || explored >= EXPLORATION_BUDGET) break;
+            if (path.includes(next)) continue; // no cycles
+            const nextPath = [...path, next];
             if (next === dst.id) {
-              results.push([...path, next]);
+              results.push(nextPath);
               continue;
             }
-            if (visited.has(next)) continue;
-            visited.add(next);
-            path.push(next);
-            dfs(next, depthSoFar + 1);
-            path.pop();
-            visited.delete(next);
+            if (nextPath.length - 1 < depth) {
+              queue.push({ node: next, path: nextPath });
+            }
           }
         }
-        dfs(src.id, 0);
-        return { paths: results, capped: budget.explored >= EXPLORATION_BUDGET || results.length >= cap };
+        return { paths: results, capped: explored >= EXPLORATION_BUDGET || results.length >= cap };
       }
 
       const found: Array<{ ids: string[]; edgeDirection: "downstream" | "upstream" }> = [];
@@ -258,7 +259,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ company_id, country, segment, limit }) => {
-      await recordUsage(ctx.env, "simulate_disruption", ctx.isSelfTest());
+      void recordUsage(ctx.env, "simulate_disruption", ctx.isSelfTest());
       const provided = [company_id, country, segment].filter((v) => v !== undefined && v.trim() !== "");
       if (provided.length !== 1) {
         return errorResult("Exactly one of company_id, country, or segment is required.", {
@@ -269,13 +270,14 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       const companies = await getCompanies();
       const graph = buildGraph(companies);
       const byId = graph.byId;
+      const byTicker = buildTickerMap(companies);
 
       let removedIds: Set<string>;
       let criterion: "company" | "country" | "segment";
       let criterionValue: string;
 
       if (company_id) {
-        const c = findCompany(graph, company_id);
+        const c = resolveCompany(graph, byTicker, company_id);
         if (!c) {
           return errorResult(`No company found for "${company_id}".`, {
             hint: "Use search_companies to find a valid id, name, or ticker.",
@@ -286,16 +288,16 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
         criterion = "company";
         criterionValue = c.id;
       } else if (country) {
-        const ctry = country.trim().toLowerCase();
+        const ctry = normalizeCountryQuery(country);
         const matches = companies.filter((c) => c.country.toLowerCase() === ctry);
         if (matches.length === 0) {
           return errorResult(`No companies found headquartered in "${country}".`, {
-            hint: "Use get_country_exposure to see valid country values.",
+            hint: "Use get_country_exposure or list_countries to see valid country values (aliases like USA/UK also work).",
           });
         }
         removedIds = new Set(matches.map((c) => c.id));
         criterion = "country";
-        criterionValue = country;
+        criterionValue = matches[0]!.country;
       } else {
         const seg = segment!.trim().toLowerCase();
         const matches = companies.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg));
@@ -425,7 +427,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ segment, country, limit }) => {
-      await recordUsage(ctx.env, "find_single_source_dependencies", ctx.isSelfTest());
+      void recordUsage(ctx.env, "find_single_source_dependencies", ctx.isSelfTest());
       const companies = await getCompanies();
       const graph = buildGraph(companies);
       const byId = graph.byId;
@@ -527,7 +529,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ metric, segment, country, limit }) => {
-      await recordUsage(ctx.env, "rank_by_connectivity", ctx.isSelfTest());
+      void recordUsage(ctx.env, "rank_by_connectivity", ctx.isSelfTest());
       const companies = await getCompanies();
       const graph = buildGraph(companies);
 
@@ -606,7 +608,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ company_ids, segment, limit }) => {
-      await recordUsage(ctx.env, "find_common_suppliers", ctx.isSelfTest());
+      void recordUsage(ctx.env, "find_common_suppliers", ctx.isSelfTest());
       const hasIds = company_ids !== undefined && company_ids.length > 0;
       const hasSegment = segment !== undefined && segment.trim() !== "";
       if (hasIds === hasSegment) {
@@ -671,12 +673,23 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       const cap = limit ?? 20;
       const sliced = results.slice(0, cap);
       const INPUT_CAP = 15;
+      const inputListed = inputCompanies.slice(0, INPUT_CAP).map((c) => companyRef(graph, c.id));
+      const inputTruncated = inputCompanies.length > INPUT_CAP;
 
       return jsonResult({
         data: {
           input_mode: inputMode,
-          input_companies: inputCompanies.slice(0, INPUT_CAP).map((c) => companyRef(graph, c.id)),
+          input_companies: inputListed,
           input_company_count: inputCompanies.length,
+          ...(inputTruncated
+            ? {
+                input_companies_truncated: true,
+                input_companies_listed: inputListed.length,
+                note:
+                  `input_companies lists the first ${INPUT_CAP} of ${inputCompanies.length} companies analyzed; ` +
+                  "the overlap tally uses the full input set (see input_company_count).",
+              }
+            : {}),
           ...(unresolved.length ? { unresolved } : {}),
           input_companies_with_no_documented_suppliers: noSuppliers.length,
           input_companies_with_no_documented_suppliers_list: noSuppliers.map((c) => companyRef(graph, c.id)),

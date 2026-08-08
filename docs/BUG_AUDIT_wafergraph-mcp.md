@@ -3,8 +3,8 @@
 Full findings for this repository. Cross-repo index: [`../AUDIT_HANDOFF_FOR_CLAUDE.md`](../AUDIT_HANDOFF_FOR_CLAUDE.md).
 
 **Auditor:** Cursor cloud agent `bc-019fe37e-1d17-72d7-8421-1228c564bedb`  
-**Live data at audit:** ~615 companies, ~74 deals (tool copy still says 565)  
-**Code changes in this pass:** none (documentation only)
+**Live data at audit:** ~615 companies, ~74 deals  
+**Code changes:** High + key Medium items **FIXED** on branch `cursor/bug-audit-handoff-bedb` (see `AUDIT_HANDOFF_FOR_CLAUDE.md` §2). Remaining open items called out below.
 
 ---
 

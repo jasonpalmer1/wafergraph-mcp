@@ -10,174 +10,76 @@
 
 ## 0. Status of prior Mistral work
 
-**Nothing was done before this run.**
+**Nothing was done before this run.** This cloud agent *is* the run named **"Mistral AI code review"**. It started clean; this handoff + the fixes below are the work product.
 
-- This Cursor cloud agent *is* the run named **"Mistral AI code review"** (started from mobile against `jasonpalmer1/wafergraph-mcp`).
-- When it started: no branch, no commits, no prior findings files, clean `main`, no other agents (active or archived) visible in this repo/environment.
-- Sous was **not** accessible here (no public/private repo visible as `sous` / `Sous` / `sous-app` under `jasonpalmer1` with this token). Jason said a separate chat is already covering Sous — **leave Sous alone**.
+**Sous:** not accessible here — leave to the separate chat.
 
-This document *is* the documentation of the audit work.
+**Write access:** only `wafergraph-mcp`. Sibling repos cannot be pushed from this agent. Ready-to-apply patches for them are in `docs/ready-fixes/`.
 
 ---
 
-## 1. Scope completed
+## 1. What this agent did
 
-| Repo | Location reviewed | Audited? | Notes |
-|---|---|---|---|
-| **wafergraph-mcp** | `/workspace` (this repo) | Yes — full source | Primary workspace. Detailed findings in §2 and `docs/BUG_AUDIT_wafergraph-mcp.md`. |
-| **worldcup-bracket** | cloned `/tmp/repos/worldcup-bracket` | Yes — full source | Critical auth/XSS issues. See §3. |
-| **jasonwpalmer-com** | cloned `/tmp/repos/jasonwpalmer-com` | Yes — full source | CSP breaks analytics; subscribe abuse. See §4. |
-| **react-canvas-force-graph** | cloned `/tmp/repos/react-canvas-force-graph` | Yes | Stale callbacks / props. See §5. |
-| **claude-code-setup** | cloned `/tmp/repos/claude-code-setup` | Yes | Ledger path mismatch; broad unattended grants. See §6. |
-| **go-no-go** | cloned `/tmp/repos/go-no-go` | Yes | Verification coverage contradicts docs. See §7. |
-| **jasonpalmer1** (profile README) | not deep-audited | Skipped | Markdown-only profile. |
-| **awesome-mcp-servers** forks | not audited | Skipped | Forks, not original product code. |
-| **Sous** | not in this environment | **Out of scope** | Separate chat. |
-
-No code fixes were applied in this pass — **findings only**, so you can triage and fix with full context.
-
----
-
-## 2. wafergraph-mcp — priority summary
-
-Live upstream at audit time: **~615 companies / ~74 deals** (tool copy still says 565).
-
-### Fix first (High)
-
-1. **`filter_companies` segment+subsegment are independent** — `src/tools/screen.ts` ~81–82. Multi-segment companies match `segment=A` + `subsegment=B` even when B is not under A. Fix: require both on the same membership when both filters are set.
-2. **`find_paths_between` DFS + result cap can miss shorter paths** — `src/tools/graphtools.ts` `search()`. Claims “shortest first” but DFS + early stop can omit the direct edge. Fix: BFS / iterative deepening by hop length.
-3. **`simulate_disruption` docs say ticker; code uses `findCompany` only** — `src/tools/graphtools.ts` ~278. Use `resolveCompany(...)` like the other graph tools.
-
-### Fix soon (Medium) — top picks
-
-4. Stale cache not served on refresh failure — `src/data.ts` `getCompanies`/`getDeals`.
-5. No in-flight fetch coalescing (stampede) — same file.
-6. Hardcoded “565 companies” stale vs live ~615 — descriptions in `mcp-agent.ts`, `screen.ts`, `geo.ts`, `landing.ts`, `CLAUDE.md`.
-7. Country aliases only in geo tools — `USA` works in `get_country_profile`, fails in `filter_companies` / `simulate_disruption`.
-8. `compare_companies` description promises unique counterparties; payload only has shared.
-9. `analyze_portfolio_exposure` segment shares can sum >100% (multi-segment holdings).
-10. `rank_by_market_cap` can fill limit with null-cap companies.
-11. `find_common_suppliers` silently truncates displayed `input_companies` at 15.
-12. `walkChain(..., "both")` upstream-wins on bidirectional edges — `src/graph.ts`.
-13. `await recordUsage(...)` on every tool (should be `void` like session start) — latency coupling to KV.
-14. `get_deals` segment filter ignores null-id parties (deal tools elsewhere name-match).
-
-Full table + intentional non-bugs: **`docs/BUG_AUDIT_wafergraph-mcp.md`**.
-
----
-
-## 3. worldcup-bracket — priority summary
-
-**Most serious repo in this audit.** Friends-and-family pool, but public APIs + XSS make it easy to sabotage.
-
-### Critical / High — fix before any real money/prizes ride on this
-
-1. **Unauthenticated `PUT /api/brackets/:id`** — anyone who lists brackets can overwrite any entry (IDOR). DELETE is admin-gated; PUT is not. `src/index.js` ~113–131.
-2. **Name-as-identity takeover** — client binds to first case-insensitive name match, then PUTs. No unique name, no edit token.
-3. **Stored XSS via `picks` in inline `onclick`** — `jsq()` escapes `'`/`\` but not `"`; handlers sit in double-quoted attributes. Poisoned picks → steal `localStorage` `wc_pass` → admin APIs.
-4. **No server-side pick validation** — any JSON accepted; UI tree rules not enforced; perfect illegal brackets score max **1600**.
-5. **CORS `*`** on open mutating APIs — cross-origin vandalism.
-
-### Medium highlights
-
-- Admin pass in `localStorage` as `wc_pass`; no login rate limit.
-- Lock check TOCTOU (read locked, then write).
-- Unbounded name/picks size; unsafe `JSON.parse` on DB fields → 500.
-- PUT `name` non-string crashes; whitespace-only names accepted.
-- Docs/CLAUDE scoring & auth model disagree with code (docs say R32=1…F=16+bonus; code is 20/40/80/160/320).
-- No leaderboard tie-break for charity prize.
-
-**Suggested fix order:** (1) edit tokens / ownership on PUT → (2) validate picks server-side → (3) kill HTML-string `onclick` → (4) admin session cookie → (5) limits + atomic lock + doc sync.
-
----
-
-## 4. jasonwpalmer-com — priority summary
-
-Static Next export on Cloudflare Pages + Functions for mailing list.
-
-### High
-
-1. **CSP blocks visit-log script** — `public/_headers` `script-src` allows Beehiiv leftover, not `https://visit-log.jwpalm99.workers.dev`. Live analytics dead. Sister site canaifeel.com already allows that worker.
-2. **`/api/subscribe` unthrottled** — no rate limit / CAPTCHA / honeypot; confirmed live 200 path → Resend confirmation email abuse (cost/reputation).
-
-### Medium
-
-3. Resend `fetch` ignores HTTP status — still tells user “check your inbox”.
-4. `BootSequence` overlay: click-only skip, no Escape / focus trap / reduced-motion.
-5. Stale company counts in blog/build copy vs tools data (~456 vs ~615).
-6. Docs still mention Beehiiv / outdated newsletter path.
-7. Live `Access-Control-Allow-Origin: *` on site/Functions (not from repo `_headers` — likely dashboard rule).
-
----
-
-## 5. react-canvas-force-graph — priority summary
-
-Single runtime file `ForceGraph.jsx`.
-
-| Severity | Issue |
+| Work | Status |
 |---|---|
-| Medium | `onNodePick` omitted from effect deps → stale click handler |
-| Medium | Node `color`/`label`/`r` changes ignored after first build (sig is ids+links only) |
-| Medium | Resize remasures canvas but does not rescale/rebuild layout |
-| Low | `hexA` only handles 6-digit `#rrggbb`; docs overclaim settle-and-stop while default `packets=true` keeps rAF |
+| Full audit of wafergraph-mcp + 5 public sibling repos | Done |
+| Fix High + key Medium bugs in **wafergraph-mcp** | **Done in this PR** (see §2) |
+| Ready-to-apply patches for siblings | **Written** → `docs/ready-fixes/` |
+| Sous | Out of scope |
+
+`npm run typecheck` passes after the wafergraph-mcp fixes.
 
 ---
 
-## 6. claude-code-setup — priority summary
+## 2. wafergraph-mcp — FIXED in this PR
 
-Mostly templates/hooks. Doc bugs matter because Claude follows them literally.
+| ID | Issue | Fix |
+|---|---|---|
+| H1 | `filter_companies` seg+sub independent | Same-membership join when both set (`screen.ts`) |
+| H2 | `find_paths_between` DFS missed short paths | BFS by hop length (`graphtools.ts`) |
+| H3 | `simulate_disruption` ignored tickers | `resolveCompany` + ticker map |
+| M1+M2 | Cache throw on refresh fail / stampede | Stale-on-error + inflight coalesce (`data.ts`) |
+| M3 | Hardcoded “565” | Softened to “hundreds” in tool copy / landing / CLAUDE |
+| M4 | Country aliases only in geo | `normalizeCountryQuery` / `resolveCountry` in `shared.ts`; used by screen + disruption |
+| M5 | `compare_companies` promised unique | Description matches payload (shared only) |
+| M6 | Portfolio segment shares >100% | Documented in `interpretation` |
+| M7 | `rank_by_market_cap` returned null caps | Rank priced only + coverage note |
+| M8 | Silent input truncation | Truncation note on `find_common_suppliers` |
+| M10 | `await recordUsage` | `void recordUsage` everywhere |
+| L5 | `HEAD /` → 404 | HEAD handled like GET |
+| L6 | Version drift | McpServer version → `1.2.1` |
 
-| Severity | Issue |
-|---|---|
-| High | Token ledger path mismatch: `hooks/token-ledger.py` writes `~/.claude/token_ledger.md`; `/tokens` reads `<MEMORY_DIR>/token_ledger.md` |
-| High | SessionEnd auto-`/log` runs `claude -p … --permission-mode acceptEdits` unattended — wide blast radius |
-| Medium | Monday cockpit `Bash(git:*)` / `Bash(node:*)` grants are broad (README calls them narrow) |
-| Medium | `hook-errors.log` path assumes `~/.claude/hub/` without mkdir |
-| Medium | Firewall counter in `/tmp` (symlink/race on shared machines) |
-| Medium | Slash commands reference `/code-review`, playbook file, `/verify` not shipped by this repo |
+### Still open (lower priority / intentional tradeoffs)
 
----
+- M9 `walkChain(..., "both")` upstream-wins on bidirectional edges — document or dual-walk later
+- M11 `get_deals` segment filter vs null-id party name-match
+- M12 public expensive graph tools (v1 intentional; add rate limits if abused)
+- L1–L4, L7–L9 — see `docs/BUG_AUDIT_wafergraph-mcp.md`
+- Intentional non-bugs (no auth, depth cap 2, field whitelist, country=HQ) — **do not “fix”**
 
-## 7. go-no-go — priority summary
-
-| Severity | Issue |
-|---|---|
-| High | Marketing/PROTOCOL: refute **every** kills/major. Script verifies only top **3**; synth treats unverified as held → wrong NO-GO |
-| High | Purpose-mode veto still uses commercial NO-GO/CONDITIONAL-GO vocabulary |
-| Medium | Relative / Windows paths treated as inline idea text (`isPath` only `/` or `~`) |
-| Medium | Parallel stress keeps failed verifications (`filter(Boolean)` does not drop null verdicts) |
-| Medium | PROTOCOL “five stages” / Decide vs implementation (Decide folded into Synthesize; 4 phases in meta) |
-
----
-
-## 8. What Claude should do next
-
-Suggested order (product risk first):
-
-1. **Sous** — continue in the separate chat (not duplicated here).
-2. **worldcup-bracket** — Critical/High security before any pool with real stakes.
-3. **wafergraph-mcp** — three High correctness bugs (filter join, path BFS, disruption tickers); then Medium cache/alias/copy items. Detail file: `docs/BUG_AUDIT_wafergraph-mcp.md`.
-4. **jasonwpalmer-com** — CSP one-liner + subscribe rate limit.
-5. **go-no-go** / **claude-code-setup** — align scripts with claims Claude will trust.
-6. **react-canvas-force-graph** — medium UI correctness when you next touch it.
-
-When fixing wafergraph-mcp: keep intentional non-bugs listed in `docs/BUG_AUDIT_wafergraph-mcp.md` (no auth on purpose, depth cap 2, field whitelist, country=HQ, etc.).
+After merge: deploy with `npm run deploy`, then `node scripts/smoke.mjs https://mcp.wafergraph.com`.
 
 ---
 
-## 9. Evidence / method notes
+## 3. Sibling repos — Claude must apply
 
-- wafergraph-mcp reviewed from live workspace source; key High items spot-checked in file (filter independence at `screen.ts:81-82`; `simulate_disruption` uses `findCompany` at ~278; DFS `search` in `graphtools.ts`).
-- Other repos cloned read-only to `/tmp/repos/<name>` at audit time (not pushed anywhere).
-- No secrets committed; no deploys performed.
-- No PR/issue was opened on the other repos from this agent (write scope is this wafergraph-mcp workspace). Copy findings into those repos’ Claude sessions or issues as needed.
+Open each file in `docs/ready-fixes/` in a Claude session **in that repo** and apply in this order:
+
+1. **`worldcup-bracket.md`** — CRITICAL (IDOR PUT, XSS → admin, pick validation, CORS)
+2. **`jasonwpalmer-com.md`** — High (CSP visit-log, subscribe rate limit, Resend `ok`)
+3. **`go-no-go.md`** — High (verify all killers / drop unverified; purpose veto; null verdicts)
+4. **`claude-code-setup.md`** — High (ledger path; SessionEnd blast radius; monday grants)
+5. **`react-canvas-force-graph.md`** — Medium (stale callback; visual props; resize)
+
+Index: [`docs/ready-fixes/README.md`](docs/ready-fixes/README.md).
 
 ---
 
-## 10. File map of this handoff
+## 4. File map
 
 | File | Purpose |
 |---|---|
-| `AUDIT_HANDOFF_FOR_CLAUDE.md` | This cross-repo index + status. **Start here.** |
-| `docs/BUG_AUDIT_wafergraph-mcp.md` | Full wafergraph-mcp findings (severity, location, fix, intentional non-bugs). |
-| `CLAUDE.md` | Short pointer added under “Audit handoff”. |
+| `AUDIT_HANDOFF_FOR_CLAUDE.md` | This index — **start here** |
+| `docs/BUG_AUDIT_wafergraph-mcp.md` | Original full wafergraph findings |
+| `docs/ready-fixes/*` | Concrete patches for sibling repos |
+| `CLAUDE.md` | Short pointer under “Audit handoff” |

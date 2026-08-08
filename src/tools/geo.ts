@@ -1,6 +1,6 @@
 // Geography tools: everything answerable from `Company.country` (a single
-// headquarters-country string per company, filled on 100% of the 565
-// records) plus the segment/position/graph fields it can be crossed with.
+// headquarters-country string per company, filled on 100% of records) plus
+// the segment/position/graph fields it can be crossed with.
 //
 // HARD CAVEAT, repeated in every tool's description AND every response
 // payload below: `country` is HEADQUARTERS country, not a manufacturing-
@@ -13,7 +13,17 @@ import { getCompanies } from "../data";
 import { buildGraph, findCompany, suppliersOf, customersOf, type Graph } from "../graph";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
-import { jsonResult, errorResult, pricedCoverage, hhi, tallyBy, briefRef, type ToolRegistrar } from "./shared";
+import {
+  jsonResult,
+  errorResult,
+  pricedCoverage,
+  hhi,
+  tallyBy,
+  briefRef,
+  normalizeCountryQuery,
+  resolveCountry,
+  type ToolRegistrar,
+} from "./shared";
 import type { Company } from "../types";
 
 const HQ_CAVEAT =
@@ -29,38 +39,8 @@ function positionCounts(list: Company[]): Array<{ position: string; count: numbe
   return POSITION_ORDER.map((p) => ({ position: p, count: counts.get(p) ?? 0 }));
 }
 
-// Small set of obvious aliases for a 29-country dataset. Matching itself is
-// always case-insensitive exact-string against the real values found live in
-// companies.json (see the report back to the caller for the full list) —
-// this only maps common shorthands onto those real strings.
-const COUNTRY_ALIASES: Record<string, string> = {
-  usa: "united states",
-  us: "united states",
-  "u.s.": "united states",
-  "u.s.a.": "united states",
-  america: "united states",
-  uk: "united kingdom",
-  "u.k.": "united kingdom",
-  britain: "united kingdom",
-  "great britain": "united kingdom",
-  korea: "south korea",
-  "republic of korea": "south korea",
-  "rok": "south korea",
-  czechia: "czech republic",
-};
-
-function normalizeCountryQuery(raw: string): string {
-  const trimmed = raw.trim().toLowerCase();
-  return COUNTRY_ALIASES[trimmed] ?? trimmed;
-}
-
 function allCountries(companies: Company[]): string[] {
   return [...new Set(companies.map((c) => c.country))];
-}
-
-function resolveCountry(companies: Company[], raw: string): string | undefined {
-  const target = normalizeCountryQuery(raw);
-  return allCountries(companies).find((c) => c.toLowerCase() === target);
 }
 
 // Plain Levenshtein distance, used only to rank close-match suggestions when
@@ -103,7 +83,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
     {
       title: "List countries",
       description:
-        "Every country in wafergraph's semiconductor & AI supply-chain dataset (29 countries across 565 companies) " +
+        "Every country in wafergraph's semiconductor & AI supply-chain dataset (headquarters countries across the full company set) " +
         "with company count, which segments are present there (with counts), public/private split, and priced " +
         "market-cap totals. Sorted by company count descending. Optional segment filter. " +
         HQ_CAVEAT,
@@ -117,7 +97,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ segment }) => {
-      await recordUsage(ctx.env, "list_countries", ctx.isSelfTest());
+      void recordUsage(ctx.env, "list_countries", ctx.isSelfTest());
       const companies = await getCompanies();
       const seg = segment?.trim().toLowerCase();
 
@@ -180,7 +160,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ country }) => {
-      await recordUsage(ctx.env, "get_country_profile", ctx.isSelfTest());
+      void recordUsage(ctx.env, "get_country_profile", ctx.isSelfTest());
       const companies = await getCompanies();
       const resolved = resolveCountry(companies, country);
       if (!resolved) {
@@ -282,7 +262,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ countries }) => {
-      await recordUsage(ctx.env, "compare_countries", ctx.isSelfTest());
+      void recordUsage(ctx.env, "compare_countries", ctx.isSelfTest());
       const companies = await getCompanies();
 
       const resolved: string[] = [];
@@ -377,7 +357,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ segment }) => {
-      await recordUsage(ctx.env, "get_segment_leaders", ctx.isSelfTest());
+      void recordUsage(ctx.env, "get_segment_leaders", ctx.isSelfTest());
       const companies = await getCompanies();
       const seg = segment?.trim().toLowerCase();
 
@@ -444,7 +424,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ id }) => {
-      await recordUsage(ctx.env, "get_upstream_concentration", ctx.isSelfTest());
+      void recordUsage(ctx.env, "get_upstream_concentration", ctx.isSelfTest());
       const companies = await getCompanies();
       const graph: Graph = buildGraph(companies);
       const focal = findCompany(graph, id);

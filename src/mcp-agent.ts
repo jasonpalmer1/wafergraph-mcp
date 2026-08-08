@@ -49,7 +49,7 @@ function companyRef(g: Graph, id: string) {
 }
 
 export class WafergraphMCP extends McpAgent<Env, State, {}> {
-  server = new McpServer({ name: "wafergraph-mcp", version: "1.2.0" });
+  server = new McpServer({ name: "wafergraph-mcp", version: "1.2.1" });
   initialState: State = {};
 
   // Set once per session from the initialize handshake, then applied to every
@@ -73,7 +73,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
       {
         title: "Search companies",
         description:
-          "Search wafergraph's semiconductor & AI supply-chain company dataset (565 companies across 12 segments) by " +
+          "Search wafergraph's semiconductor & AI supply-chain company dataset (hundreds of companies across 12 segments) by " +
           "name/one_liner substring and/or segment and/or country. Returns a compact list capped at 25 with a total match count. " +
           "Use get_segments first if you don't know valid segment ids.",
         inputSchema: {
@@ -86,7 +86,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ query, segment, country }) => {
-        await recordUsage(this.env, "search_companies", this.selfTest);
+        void recordUsage(this.env, "search_companies", this.selfTest);
         const companies = await getCompanies();
         const q = query?.trim().toLowerCase();
         const seg = segment?.trim().toLowerCase();
@@ -131,7 +131,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ id }) => {
-        await recordUsage(this.env, "get_company", this.selfTest);
+        void recordUsage(this.env, "get_company", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
         const company = findCompany(graph, id);
@@ -182,7 +182,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         inputSchema: {},
       },
       async () => {
-        await recordUsage(this.env, "get_segments", this.selfTest);
+        void recordUsage(this.env, "get_segments", this.selfTest);
         const [taxonomy, companies] = await Promise.all([getTaxonomy(), getCompanies()]);
 
         const segCount = new Map<string, number>();
@@ -241,7 +241,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ id, direction, depth }) => {
-        await recordUsage(this.env, "get_supply_chain", this.selfTest);
+        void recordUsage(this.env, "get_supply_chain", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
         const focal = findCompany(graph, id);
@@ -278,7 +278,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ query, segment }) => {
-        await recordUsage(this.env, "get_deals", this.selfTest);
+        void recordUsage(this.env, "get_deals", this.selfTest);
         const [deals, companies] = await Promise.all([getDeals(), getCompanies()]);
         const byId = new Map(companies.map((c) => [c.id, c]));
         const q = query?.trim().toLowerCase();
@@ -327,8 +327,9 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
       {
         title: "Compare companies",
         description:
-          "Side-by-side comparison of 2-6 companies on the same fields, plus their shared and unique supply-chain " +
-          "counterparties. Cheaper and more aligned than several get_company calls when the question is comparative.",
+          "Side-by-side comparison of 2-6 companies on the same fields, plus their shared supply-chain " +
+          "counterparties (suppliers/customers documented for every company in the set). Cheaper and more aligned " +
+          "than several get_company calls when the question is comparative.",
         inputSchema: {
           ids: z
             .array(z.string())
@@ -338,7 +339,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ ids }) => {
-        await recordUsage(this.env, "compare_companies", this.selfTest);
+        void recordUsage(this.env, "compare_companies", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
 
@@ -400,7 +401,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         description:
           "Geographic concentration of the supply chain: which countries host the companies in a given segment (or " +
           "across all 12 segments), ranked by company count. Answers 'how concentrated in Taiwan is advanced " +
-          "lithography' style questions. Country is recorded for all 565 companies.",
+          "lithography' style questions. Country (headquarters) is recorded for every company in the dataset.",
         inputSchema: {
           segment: z
             .string()
@@ -409,7 +410,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ segment }) => {
-        await recordUsage(this.env, "get_country_exposure", this.selfTest);
+        void recordUsage(this.env, "get_country_exposure", this.selfTest);
         const companies = await getCompanies();
         const seg = segment?.trim().toLowerCase();
 
@@ -476,7 +477,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ segment, limit }) => {
-        await recordUsage(this.env, "find_chokepoints", this.selfTest);
+        void recordUsage(this.env, "find_chokepoints", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
         const seg = segment?.trim().toLowerCase();
@@ -553,7 +554,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         },
       },
       async ({ holdings }) => {
-        await recordUsage(this.env, "analyze_portfolio_exposure", this.selfTest);
+        void recordUsage(this.env, "analyze_portfolio_exposure", this.selfTest);
         const companies = await getCompanies();
         const graph = buildGraph(companies);
 
@@ -571,7 +572,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         if (matched.length === 0) {
           return errorResult("None of the supplied holdings matched a company in the dataset.", {
             unmatched,
-            hint: "wafergraph covers 565 semiconductor & AI supply-chain companies. Use search_companies to check coverage.",
+            hint: "wafergraph covers hundreds of semiconductor & AI supply-chain companies. Use search_companies to check coverage.",
           });
         }
 
@@ -604,7 +605,9 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
             shared_upstream_suppliers: sharedSuppliers,
             interpretation:
               "shared_upstream_suppliers lists companies that more than one holding depends on. Concentration there means " +
-              "positions that look diversified may fail together on the same upstream disruption.",
+              "positions that look diversified may fail together on the same upstream disruption. " +
+              "segment_exposure.share is the % of holdings that touch that segment (multi-segment holdings count in " +
+              "every segment they touch), so segment shares can sum above 100% — it is not a partition of the portfolio.",
             disclaimer: "Informational supply-chain mapping over public data. Not investment advice.",
           },
           attribution: attributionGeneric(),

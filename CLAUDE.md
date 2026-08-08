@@ -1,7 +1,7 @@
 # wafergraph-mcp — Remote MCP server for wafergraph.com's dataset
 
 Read-only Cloudflare Workers MCP server exposing wafergraph.com's semiconductor & AI
-supply-chain dataset (565 companies, 12 segments, 74 M&A deals, supplier/customer graph) as 30
+supply-chain dataset (hundreds of companies, 12 segments, M&A deals, supplier/customer graph) as 30
 tools for AI agents. No auth (v1, public data). Streamable HTTP transport at `/mcp`, human
 landing page at `/`. Independent project — not an official wafergraph product, but built to be
 a good-faith front door to it (every response links back to wafergraph.com and its paid report).
@@ -89,10 +89,10 @@ scoped `CF_API_TOKEN` that shadows the wrangler OAuth session and fails with aut
 
 ## Audit handoff
 
-A full cross-repo bug audit (2026-08-08) lives in **`AUDIT_HANDOFF_FOR_CLAUDE.md`** (start there).
-wafergraph-mcp-only detail is in **`docs/BUG_AUDIT_wafergraph-mcp.md`**. Findings only — no fixes
-applied in that pass. Prior “Mistral AI code review” cloud run had done nothing until that handoff
-was written; Sous was out of scope (separate chat).
+Start at **`AUDIT_HANDOFF_FOR_CLAUDE.md`**. wafergraph-mcp High + key Medium bugs from the
+2026-08-08 audit are fixed on this branch; sibling-repo patches (worldcup-bracket CRITICAL, etc.)
+are ready to apply under **`docs/ready-fixes/`** (this agent cannot push those repos). Sous is
+out of scope (separate chat). Detail: `docs/BUG_AUDIT_wafergraph-mcp.md`.
 
 ---
 
