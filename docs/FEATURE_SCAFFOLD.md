@@ -82,12 +82,10 @@ ever serves real `taxonomy.json`, flip `getTaxonomy()` in `data.ts` to the same
 live-fetch path as companies/deals and delete the snapshot ritual. Until then:
 keep `scripts/refresh-data.sh`.
 
-### A7. Scaffold — `compare_segments` (not shipped)
+### A7. ✅ NEW TOOL — `compare_segments`
 
-Side-by-side two taxonomy segments: company counts, HQ country HHI, priced-cap
-coverage, top leaders, edge density. Agents currently chain `get_segment_leaders`
-+ `get_country_exposure` twice. Implement in `geo.ts` when appetite remains;
-register smoke case + extend `recommend_tools` ROUTING.
+In `geo.ts`. 2–4 segments: counts, country HHI, position mix, priced coverage,
+leaders, edge density, shared top HQ countries. Smoke + ROUTING included.
 
 ### A8. ✅ Org — version sync helper
 

@@ -64,6 +64,11 @@ const ROUTING: Array<{
     notes: "country = headquarters, not fab location.",
   },
   {
+    intent: "Compare two supply-chain layers / segments",
+    primary: "compare_segments",
+    also: ["get_segment_leaders", "get_country_exposure", "get_segments"],
+  },
+  {
     intent: "Is the dataset thin / stale?",
     primary: "get_dataset_stats",
     also: ["list_stale_companies"],
@@ -82,7 +87,7 @@ export const registerMetaTools: ToolRegistrar = (server, ctx) => {
       title: "Recommend which tools to call",
       description:
         "Given a short natural-language intent about semiconductor supply-chain research, return the best primary " +
-        "wafergraph MCP tool and optional follow-ups. Call this when unsure which of the 35 tools to use — cheaper " +
+        "wafergraph MCP tool and optional follow-ups. Call this when unsure which of the 36 tools to use — cheaper " +
         "than trial-and-error. Does not run the other tools; it only routes.",
       inputSchema: {
         intent: z
@@ -116,6 +121,7 @@ export const registerMetaTools: ToolRegistrar = (server, ctx) => {
         if (/country|geo|taiwan|hq/.test(q) && row.primary === "list_countries") score += 4;
         if (/cover|stale|limit|gap|fresh/.test(q) && row.primary === "get_dataset_stats") score += 5;
         if (/stale|last.?verif|oldest|outdated/.test(q) && row.primary === "list_stale_companies") score += 5;
+        if (/segment/.test(q) && /compar|vs|versus|side.?by/.test(q) && row.primary === "compare_segments") score += 5;
         return { ...row, score };
       })
         .filter((r) => r.score > 0)

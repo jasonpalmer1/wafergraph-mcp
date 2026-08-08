@@ -406,7 +406,107 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
     },
   );
 
-  // ---- 5. get_upstream_concentration -----------------------------------------
+  // ---- 5. compare_segments ---------------------------------------------------
+  server.registerTool(
+    "compare_segments",
+    {
+      title: "Compare segments",
+      description:
+        "Side-by-side comparison of 2-4 taxonomy segments: company counts, HQ-country concentration (HHI), " +
+        "market-position mix, priced market-cap coverage, and top leaders. Prefer this over calling " +
+        "get_segment_leaders / get_country_exposure twice. " +
+        HQ_CAVEAT,
+      inputSchema: {
+        segments: z
+          .array(z.string())
+          .min(2)
+          .max(4)
+          .describe("2-4 taxonomy segment ids, e.g. ['foundry','memory'] (see get_segments). Case-insensitive."),
+        leaders_limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(15)
+          .optional()
+          .default(5)
+          .describe("Max monopoly/leader companies to list per segment (1-15, default 5)."),
+      },
+    },
+    async ({ segments, leaders_limit }) => {
+      void recordUsage(ctx.env, "compare_segments", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
+      const lim = Math.min(Math.max(leaders_limit ?? 5, 1), 15);
+
+      const resolved: string[] = [];
+      const unresolved: string[] = [];
+      for (const raw of segments) {
+        const needle = raw.trim().toLowerCase();
+        const canon = distinctSegments(companies).find((s) => s.toLowerCase() === needle);
+        if (canon && !resolved.some((r) => r.toLowerCase() === canon.toLowerCase())) resolved.push(canon);
+        else if (!canon) unresolved.push(raw);
+      }
+      if (resolved.length < 2) {
+        return errorResult("Need at least 2 resolvable segment ids to compare.", {
+          unresolved,
+          valid_segments: distinctSegments(companies).sort(),
+          hint: "Use get_segments for valid segment ids.",
+        });
+      }
+
+      const rows = resolved.map((segId) => {
+        const inSegment = companies.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === segId.toLowerCase()));
+        const countryCounts = tallyBy(inSegment, (c) => c.country);
+        const withEdges = inSegment.filter(
+          (c) => suppliersOf(graph, c.id).length > 0 || customersOf(graph, c.id).length > 0,
+        ).length;
+        const leaderCandidates = inSegment
+          .filter((c) => c.market_position === "monopoly" || c.market_position === "leader")
+          .sort(
+            (a, b) =>
+              POSITION_RANK[a.market_position]! - POSITION_RANK[b.market_position]! ||
+              (b.market_cap_usd_b ?? -1) - (a.market_cap_usd_b ?? -1),
+          );
+        return {
+          segment: segId,
+          company_count: inSegment.length,
+          position_mix: positionCounts(inSegment),
+          country_mix: countryCounts.slice(0, 10),
+          country_hhi: hhi(countryCounts.map((x) => x.count)),
+          market_cap: pricedCoverage(inSegment),
+          companies_with_graph_edges: withEdges,
+          edge_coverage_in_segment: inSegment.length
+            ? Number((withEdges / inSegment.length).toFixed(3))
+            : 0,
+          leaders: leaderCandidates.slice(0, lim).map((c) => briefRef(c)),
+          leaders_total: leaderCandidates.length,
+        };
+      });
+
+      // Segments unique to each side of the comparison (by HQ country presence)
+      // are less useful than shared top countries — surface those for agents.
+      const topCountriesPerSeg = rows.map((r) => new Set(r.country_mix.slice(0, 5).map((c) => c.value)));
+      const shared_top_countries = [...(topCountriesPerSeg[0] ?? [])].filter((c) =>
+        topCountriesPerSeg.every((set) => set.has(c)),
+      );
+
+      return jsonResult({
+        data: {
+          segments: rows,
+          shared_top_hq_countries: shared_top_countries,
+          ...(unresolved.length ? { unresolved } : {}),
+          methodology:
+            "country_hhi is Herfindahl over HQ-country company counts within the segment (0=dispersed, 1=one country). " +
+            "shared_top_hq_countries = intersection of each segment's top-5 HQ countries by company count. " +
+            "edge_coverage_in_segment is the share of companies in that segment with ≥1 documented supplier or customer edge.",
+          caveat: HQ_CAVEAT,
+        },
+        attribution: attributionGeneric(),
+        links: LINKS,
+      });
+    },
+  );
+
+  // ---- 6. get_upstream_concentration -----------------------------------------
   server.registerTool(
     "get_upstream_concentration",
     {

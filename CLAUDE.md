@@ -17,7 +17,7 @@ Live: **https://mcp.wafergraph.com**
 - `src/tools/shared.ts` — `jsonResult` (attaches `freshness.live_cache_age_ms`)/`errorResult`, `companyRef`/`briefRef`, `pricedCoverage`, `hhi`, `tallyBy`, country + deal-party resolvers, `ToolCtx`/`ToolRegistrar`.
 - `src/tools/ctxload.ts` — `loadGraph()` / `loadAll()` (preferred entry for tool handlers; graph is identity-cached).
 - `src/tools/screen.ts` — screening & discovery: `filter_companies`, `list_subsegments`, `get_subsegment`, `find_similar_companies`, `find_substitutes`, `rank_by_market_cap`, `resolve_ticker`.
-- `src/tools/geo.ts` — geography & structure: `list_countries`, `get_country_profile`, `compare_countries`, `get_segment_leaders`, `get_upstream_concentration`. Country is HQ, not fab location; every tool here says so.
+- `src/tools/geo.ts` — geography & structure: `list_countries`, `get_country_profile`, `compare_countries`, `get_segment_leaders`, `compare_segments`, `get_upstream_concentration`. Country is HQ, not fab location; every tool here says so.
 - `src/tools/graphtools.ts` — graph analysis: `find_paths_between`, `explain_relationship`, `diff_supply_chains`, `simulate_disruption`, `find_single_source_dependencies`, `rank_by_connectivity`, `find_common_suppliers`.
 - `src/tools/deals.ts` — deals & dataset: `get_deal`, `find_deals_by_company`, `get_ma_activity_summary`, `find_consolidation_hotspots`, `list_stale_companies`, `get_dataset_stats`.
 - `src/tools/meta.ts` — `recommend_tools` (intent → tool routing for agents).

@@ -66,6 +66,7 @@ const CASES = {
   get_country_profile: { country: "Taiwan" },
   compare_countries: { countries: ["Taiwan", "United States"] },
   get_segment_leaders: { segment: "foundry" },
+  compare_segments: { segments: ["foundry", "memory"], leaders_limit: 5 },
   get_upstream_concentration: { id: "tsmc" },
 
   find_paths_between: { from: "shin_etsu", to: "nvidia", max_depth: 3 },
@@ -104,6 +105,10 @@ const ASSERTS = {
   get_deal: (d) => typeof d?.id === "string" && d.id.includes("amd"),
   get_dataset_stats: (d) => typeof d?.counts?.companies === "number" && d.counts.companies > 0,
   list_stale_companies: (d) => Array.isArray(d?.results) && typeof d?.matching_total === "number",
+  compare_segments: (d) =>
+    Array.isArray(d?.segments) &&
+    d.segments.length >= 2 &&
+    typeof d.segments[0]?.country_hhi === "number",
   simulate_disruption: (d) => d?.removed?.criterion === "company",
   find_substitutes: (d) => Array.isArray(d?.results) && d?.focal?.id,
   explain_relationship: (d) =>

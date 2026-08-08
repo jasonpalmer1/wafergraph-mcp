@@ -169,7 +169,7 @@ export function renderLanding(origin: string): string {
     <li><code>find_chokepoints</code> / <code>rank_by_connectivity</code> <span>— who everything routes through</span></li>
     <li><code>get_upstream_concentration</code> <span>— one company's supplier mix, with an HHI index</span></li>
     <li><code>list_countries</code> / <code>get_country_profile</code> / <code>compare_countries</code> <span>— geography</span></li>
-    <li><code>get_country_exposure</code> / <code>get_segment_leaders</code> <span>— who runs each layer, and from where</span></li>
+    <li><code>get_country_exposure</code> / <code>get_segment_leaders</code> / <code>compare_segments</code> <span>— who runs each layer, and from where</span></li>
     <li><code>compare_companies</code> <span>— 2-6 companies side by side, plus what they share</span></li>
     <li><code>analyze_portfolio_exposure</code> <span>— tickers in, shared upstream dependencies out</span></li>
     <li><code>get_deals</code> / <code>get_deal</code> / <code>find_deals_by_company</code> <span>— the M&amp;A corpus</span></li>
