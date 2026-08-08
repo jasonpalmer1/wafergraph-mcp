@@ -344,9 +344,11 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
 
         return {
           company: companyRef(graph, cid),
-          lost_suppliers: lostSupplierIds.map((id) => companyRef(graph, id)),
+          lost_supplier_count: lostSupplierIds.length,
+          lost_suppliers: lostSupplierIds.slice(0, ALT_CAP).map((id) => companyRef(graph, id)),
           remaining_supplier_count: remainingSupplierIds.length,
-          subsegment_impact: subsegmentImpact,
+          subsegment_impact: subsegmentImpact.slice(0, 12),
+          subsegment_impact_total: subsegmentImpact.length,
           zero_alternative_subsegment_count: zeroAltSubsegments.length,
           has_zero_alternative: zeroAltSubsegments.length > 0,
         };
@@ -357,7 +359,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
         if (b.zero_alternative_subsegment_count !== a.zero_alternative_subsegment_count) {
           return b.zero_alternative_subsegment_count - a.zero_alternative_subsegment_count;
         }
-        return b.lost_suppliers.length - a.lost_suppliers.length;
+        return b.lost_supplier_count - a.lost_supplier_count;
       });
 
       const cap = limit ?? 20;
