@@ -195,7 +195,8 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
       title: "Get supply chain",
       description:
         "Walk the supplier/customer graph from one focal company, up to 2 tiers up (suppliers), down (customers), or both. " +
-        "Mirrors the chain view on wafergraph.com's Explorer. Returns companies grouped by tier plus the edges between them.",
+        "Mirrors the chain view on wafergraph.com's Explorer. Returns companies grouped by tier plus the edges between them. " +
+        "Pass compact=true when the response would blow an LLM context window (hub firms).",
       inputSchema: {
         id: z.string().describe("Focal company id, name, or ticker."),
         direction: z
@@ -203,9 +204,16 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
           .default("both")
           .describe("up = walk suppliers only, down = walk customers only, both = walk both directions independently."),
         depth: z.number().int().min(0).max(2).default(2).describe("Number of tiers to walk, capped at 2."),
+        compact: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            "If true, keep at most 12 companies per tier (already sorted by market cap) and 40 edges among the kept set. Default false.",
+          ),
       },
     },
-    async ({ id, direction, depth }) => {
+    async ({ id, direction, depth, compact }) => {
       void recordUsage(ctx.env, "get_supply_chain", ctx.isSelfTest());
       const { graph } = await loadGraph();
       const focal = resolveCompany(graph, id);
@@ -216,9 +224,49 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
       }
 
       const chain = walkChain(graph, focal.id, direction, depth);
+      if (!compact) {
+        return jsonResult({
+          data: { ...chain, compact: false },
+          attribution: attributionForCompany(focal.id),
+          links: LINKS,
+        });
+      }
+
+      const PER_TIER = 12;
+      const EDGE_CAP = 40;
+      const kept = new Set<string>([chain.focal_id]);
+      let truncated_tiers = 0;
+      const tiers = chain.tiers.map((t) => {
+        if (t.companies.length > PER_TIER) truncated_tiers++;
+        const companies = t.companies.slice(0, PER_TIER);
+        for (const c of companies) kept.add(c.id);
+        return {
+          tier: t.tier,
+          companies,
+          tier_total: t.companies.length,
+          truncated: t.companies.length > PER_TIER,
+        };
+      });
+      const edgesFull = chain.edges.filter((e) => kept.has(e.from) && kept.has(e.to));
+      const edges = edgesFull.slice(0, EDGE_CAP);
+      const dual_role_company_ids = chain.dual_role_company_ids.filter((cid) => kept.has(cid));
 
       return jsonResult({
-        data: chain,
+        data: {
+          ...chain,
+          tiers,
+          edges,
+          dual_role_company_ids,
+          compact: true,
+          total_companies_full: chain.total_companies,
+          total_companies: kept.size,
+          note:
+            (chain.note ? `${chain.note} ` : "") +
+            `compact=true: capped at ${PER_TIER} companies/tier` +
+            (truncated_tiers ? ` (${truncated_tiers} tier(s) truncated; see tier_total)` : "") +
+            ` and ${EDGE_CAP} edges (kept ${edges.length} of ${edgesFull.length} among retained companies). ` +
+            `total_companies_full is the uncapped walk size.`,
+        },
         attribution: attributionForCompany(focal.id),
         links: LINKS,
       });

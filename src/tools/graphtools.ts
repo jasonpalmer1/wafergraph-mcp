@@ -814,4 +814,111 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       });
     },
   );
+
+  // ---- 7. diff_supply_chains ============================================
+  // Set-diff of documented suppliers/customers — cheaper than two full
+  // get_supply_chain walks when the question is overlap vs unique deps.
+  server.registerTool(
+    "diff_supply_chains",
+    {
+      title: "Diff two supply chains",
+      description:
+        "Compare the documented 1-hop supplier and/or customer sets of two companies: shared, only-A, and only-B. " +
+        "Prefer this over two get_supply_chain calls when asking how their immediate chains overlap. " +
+        "For multi-hop paths use explain_relationship.",
+      inputSchema: {
+        a: z.string().describe("First company id, name, or ticker."),
+        b: z.string().describe("Second company id, name, or ticker."),
+        side: z
+          .enum(["suppliers", "customers", "both"])
+          .optional()
+          .default("both")
+          .describe("Which neighbor sets to diff. Default both."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .default(25)
+          .describe("Max companies to return per bucket (shared / only_a / only_b), 1-50. Default 25."),
+      },
+    },
+    async ({ a, b, side, limit }) => {
+      void recordUsage(ctx.env, "diff_supply_chains", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
+      const left = resolveCompany(graph, a);
+      const right = resolveCompany(graph, b);
+      if (!left || !right) {
+        return errorResult("Could not resolve both companies.", {
+          a: left ? companyRef(graph, left.id) : null,
+          b: right ? companyRef(graph, right.id) : null,
+          unresolved: [!left ? a : null, !right ? b : null].filter(Boolean),
+          hint: "Use search_companies or resolve_ticker first.",
+          suggestions_a: left ? [] : suggestCompanies(companies, a),
+          suggestions_b: right ? [] : suggestCompanies(companies, b),
+        });
+      }
+      if (left.id === right.id) {
+        return errorResult("Both inputs resolved to the same company — need two distinct companies.");
+      }
+
+      const lim = Math.min(Math.max(limit ?? 25, 1), 50);
+
+      function bucket(leftIds: string[], rightIds: string[]) {
+        const L = new Set(leftIds);
+        const R = new Set(rightIds);
+        const sharedIds = [...L].filter((id) => R.has(id));
+        const onlyAIds = [...L].filter((id) => !R.has(id));
+        const onlyBIds = [...R].filter((id) => !L.has(id));
+        const byCap = (ids: string[]) =>
+          ids
+            .slice()
+            .sort(
+              (x, y) =>
+                (graph.byId.get(y)?.market_cap_usd_b ?? -1) - (graph.byId.get(x)?.market_cap_usd_b ?? -1) ||
+                (graph.byId.get(x)?.name ?? "").localeCompare(graph.byId.get(y)?.name ?? ""),
+            );
+        const pack = (ids: string[]) => {
+          const sorted = byCap(ids);
+          return {
+            total: sorted.length,
+            returned: Math.min(sorted.length, lim),
+            companies: sorted.slice(0, lim).map((id) => companyRef(graph, id)),
+          };
+        };
+        return {
+          shared: pack(sharedIds),
+          only_a: pack(onlyAIds),
+          only_b: pack(onlyBIds),
+          jaccard:
+            L.size + R.size === 0
+              ? 0
+              : Number((sharedIds.length / (L.size + R.size - sharedIds.length)).toFixed(4)),
+        };
+      }
+
+      const wantSup = side === "suppliers" || side === "both";
+      const wantCust = side === "customers" || side === "both";
+
+      return jsonResult({
+        data: {
+          a: companyRef(graph, left.id),
+          b: companyRef(graph, right.id),
+          side,
+          ...(wantSup
+            ? { suppliers: bucket(suppliersOf(graph, left.id), suppliersOf(graph, right.id)) }
+            : {}),
+          ...(wantCust
+            ? { customers: bucket(customersOf(graph, left.id), customersOf(graph, right.id)) }
+            : {}),
+          edge_coverage: edgeCoverage(companies),
+          caveat:
+            "1-hop documented edges only. Absence from a set is not proof of no commercial relationship. See edge_coverage.",
+        },
+        attribution: attributionGeneric(),
+        links: LINKS,
+      });
+    },
+  );
 };

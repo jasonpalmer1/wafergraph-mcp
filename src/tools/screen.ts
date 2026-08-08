@@ -3,14 +3,12 @@
 // does a substring text match, everything here does exact/range filtering,
 // ranking, and structural comparison suited to multi-criteria screens.
 //
-// No new data dependencies: reads the same getCompanies()/getTaxonomy() as
-// the rest of the server. Follows the pattern in mcp-agent.ts and reuses the
-// helpers in ./shared.ts (jsonResult/errorResult/briefRef/pricedCoverage/
-// tallyBy) rather than re-deriving them.
+// No new data dependencies: reads via loadGraph()/loadAll() like the rest of
+// the server. Reuses helpers in ./shared.ts rather than re-deriving them.
 import { z } from "zod";
-import { getCompanies, getTaxonomy, TAXONOMY_SNAPSHOT_DATE } from "../data";
+import { TAXONOMY_SNAPSHOT_DATE } from "../data";
 import { resolveCompany, suppliersOf, customersOf } from "../graph";
-import { loadGraph } from "./ctxload";
+import { loadGraph, loadAll } from "./ctxload";
 import type { Company } from "../types";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
@@ -80,7 +78,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ segment, subsegment, country, market_position, public: isPublic, min_market_cap_usd_b, max_market_cap_usd_b, has_ticker, sort_by, limit, offset }) => {
       void recordUsage(ctx.env, "filter_companies", ctx.isSelfTest());
-      const companies = await getCompanies();
+      const { companies } = await loadGraph();
 
       const seg = segment?.trim().toLowerCase();
       const sub = subsegment?.trim().toLowerCase();
@@ -168,7 +166,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ segment }) => {
       void recordUsage(ctx.env, "list_subsegments", ctx.isSelfTest());
-      const [taxonomy, companies] = await Promise.all([getTaxonomy(), getCompanies()]);
+      const { taxonomy, companies } = await loadAll();
       const segFilter = segment?.trim().toLowerCase();
 
       const segNameById = new Map(taxonomy.segments.map((s) => [s.id, s.name]));
@@ -267,7 +265,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ segment, subsegment, limit, offset }) => {
       void recordUsage(ctx.env, "get_subsegment", ctx.isSelfTest());
-      const [taxonomy, companies] = await Promise.all([getTaxonomy(), getCompanies()]);
+      const { taxonomy, companies } = await loadAll();
       const segId = segment.trim().toLowerCase();
       const subId = subsegment.trim().toLowerCase();
 
@@ -401,7 +399,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ limit, segment, country, market_position }) => {
       void recordUsage(ctx.env, "rank_by_market_cap", ctx.isSelfTest());
-      const companies = await getCompanies();
+      const { companies } = await loadGraph();
       const seg = segment?.trim().toLowerCase();
       const ctry = country ? normalizeCountryQuery(country) : undefined;
 
@@ -452,8 +450,8 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       title: "Resolve ticker",
       description:
         "Batch-resolve up to 25 strings — tickers, company names, or ids, in any mix — to canonical company refs. " +
-        "Call this FIRST whenever you have raw user input (a ticker list, pasted names) and need valid ids before " +
-        "calling other tools; unresolved entries come back with up to 3 suggested close matches instead of just null.",
+        "This is the only batch resolver (do not invent a second batch_resolve tool). Call FIRST on raw user input " +
+        "before other tools; unresolved entries come back with up to 3 suggested close matches.",
       inputSchema: {
         queries: z
           .array(z.string())
@@ -464,8 +462,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ queries }) => {
       void recordUsage(ctx.env, "resolve_ticker", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const byId = new Map(companies.map((c) => [c.id, c]));
+      const { companies, graph } = await loadGraph();
 
       const scoreCandidate = (c: Company, qLower: string): number => {
         let s = 0;
@@ -480,7 +477,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
         const q = raw.trim();
         const qLower = q.toLowerCase();
 
-        let match: Company | undefined = byId.get(q);
+        let match: Company | undefined = graph.byId.get(q);
         let match_method: string | null = match ? "exact_id" : null;
 
         if (!match) {
@@ -492,7 +489,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
           if (match) match_method = "case_insensitive_name";
         }
         if (!match) {
-          match = companies.find((c) => c.ticker !== null && c.ticker.toLowerCase() === qLower);
+          match = graph.byTicker.get(q.toUpperCase());
           if (match) match_method = "case_insensitive_ticker";
         }
         if (!match) {

@@ -17,8 +17,8 @@ until you implement + deploy from the laptop (see `CLAUDE_LOCAL_PICKUP.md`).
 - Tools 1–9 live in `src/tools/core.ts`; `mcp-agent.ts` is registration-only (~40 lines)
 - Graphtools / deals / geo (graph paths) / screen (similar) use `loadGraph`/`loadAll`
 
-**Claude optional polish:** migrate remaining `getCompanies()`-only handlers in
-`screen.ts` / `geo.ts` list tools to `loadGraph()` for consistency (no behavior change).
+**✅ Loader migration:** remaining `screen.ts` / `geo.ts` handlers now use
+`loadGraph()` / `loadAll()` (no bare `getCompanies()` in those modules).
 
 ### A2. ✅ DONE (off by default) — Light rate limiting
 
@@ -33,16 +33,16 @@ npx wrangler secret put RATE_LIMIT_ENABLED   # enter: 1
 # or vars in dashboard; then npm run deploy
 ```
 
-### A3. `resolve_ticker` is already the batch resolver
+### A3. ✅ `resolve_ticker` is the only batch resolver
 
-`resolve_ticker` in `screen.ts` already accepts up to 25 mixed ticker/name/id queries.
-**Do not add a second `batch_resolve` tool.** If agents miss it, improve the tool description
-and mention it in the landing page tool list — don’t fork.
+Tool description now says so explicitly; uses `loadGraph` + `byTicker`.
+**Do not add a second `batch_resolve` tool.**
 
-### A4. ✅ PARTIAL — `get_company({ compact: true })`
+### A4. ✅ DONE — `compact` on get_company / compare / get_supply_chain
 
-Shipped on `get_company`: tighter edge cap (25) + brief company payload.
-**Claude next:** add the same flag to `compare_companies` / `get_supply_chain` if agents still blow context.
+- `get_company({ compact })` — brief refs + 25-edge cap
+- `compare_companies({ compact })` — brief rows
+- `get_supply_chain({ compact })` — 12 companies/tier + 40 edges, with `tier_total`
 
 ### A4b. ✅ NEW TOOL — `find_substitutes`
 
@@ -59,11 +59,16 @@ In `graphtools.ts`. One call: shortest paths (either direction) + shared
 suppliers/customers + direct-edge flags. Prefer over chaining
 `find_paths_between` + `compare_companies` for “how are A and B connected?”.
 
-### A5. Freshness banner on every tool (optional)
+### A4e. ✅ NEW TOOL — `diff_supply_chains`
 
-`get_dataset_stats` already exposes `live_cache_age_ms`. Optional next step:
-attach `{ freshness: { cache_age_ms } }` via a tiny wrapper around `jsonResult`
-for tools that touch live data. Keep attribution/links unchanged.
+In `graphtools.ts`. 1-hop supplier/customer set diff (shared / only_a / only_b + Jaccard).
+Smoke + `recommend_tools` routing included.
+
+### A5. ✅ DONE — Freshness on every successful tool response
+
+`jsonResult` in `shared.ts` attaches `{ freshness: { live_cache_age_ms } }`
+(sibling of `data` / `attribution` / `links`). Smoke asserts the field exists.
+`get_dataset_stats` still carries its own detailed freshness block inside `data`.
 
 ### A6. Taxonomy live-fetch when upstream exposes JSON
 

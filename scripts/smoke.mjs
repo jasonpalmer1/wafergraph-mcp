@@ -74,6 +74,7 @@ const CASES = {
   rank_by_connectivity: { metric: "customers", limit: 10 },
   find_common_suppliers: { company_ids: ["nvidia", "amd", "intel"] },
   explain_relationship: { from: "nvidia", to: "tsmc", max_depth: 3, path_limit: 5 },
+  diff_supply_chains: { a: "nvidia", b: "amd", side: "both", limit: 10 },
 
   get_deal: { id: "amd_xilinx" },
   find_deals_by_company: { company: "amd" },
@@ -99,6 +100,12 @@ const ASSERTS = {
   find_substitutes: (d) => Array.isArray(d?.results) && d?.focal?.id,
   explain_relationship: (d) =>
     d?.from?.id && d?.to?.id && Array.isArray(d?.paths) && typeof d?.summary === "string",
+  diff_supply_chains: (d) =>
+    d?.a?.id &&
+    d?.b?.id &&
+    d?.suppliers?.shared &&
+    d?.customers?.shared &&
+    typeof d?.suppliers?.jaccard === "number",
   recommend_tools: (d) => Array.isArray(d?.recommendations) && d.recommendations[0]?.primary,
 };
 
@@ -107,6 +114,9 @@ function preview(result, toolName) {
   try {
     const payload = JSON.parse(text);
     if (payload.error) return { ok: false, note: `tool returned error: ${payload.error}` };
+    if (!payload.freshness || !("live_cache_age_ms" in payload.freshness)) {
+      return { ok: false, note: `missing freshness.live_cache_age_ms on ${toolName}` };
+    }
     const data = payload.data ?? {};
     const assert = ASSERTS[toolName];
     if (assert && !assert(data)) {

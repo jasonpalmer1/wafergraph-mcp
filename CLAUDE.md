@@ -13,11 +13,11 @@ Live: **https://mcp.wafergraph.com**
 - `src/index.ts` — Worker entry point. Routes `GET|HEAD /` → landing page, `/mcp*` → the MCP agent, else 404.
 - `src/mcp-agent.ts` — `WafergraphMCP extends McpAgent`; **registration only** — calls `register*Tools` from `src/tools/`.
 - `src/tools/core.ts` — tools 1–9 (search/get company, segments, supply chain, deals, compare, country exposure, chokepoints, portfolio).
-- `src/tools/shared.ts` — `jsonResult`/`errorResult`, `companyRef`/`briefRef`, `pricedCoverage`, `hhi`, `tallyBy`, country + deal-party resolvers, `ToolCtx`/`ToolRegistrar`.
+- `src/tools/shared.ts` — `jsonResult` (attaches `freshness.live_cache_age_ms`)/`errorResult`, `companyRef`/`briefRef`, `pricedCoverage`, `hhi`, `tallyBy`, country + deal-party resolvers, `ToolCtx`/`ToolRegistrar`.
 - `src/tools/ctxload.ts` — `loadGraph()` / `loadAll()` (preferred entry for tool handlers; graph is identity-cached).
 - `src/tools/screen.ts` — screening & discovery: `filter_companies`, `list_subsegments`, `get_subsegment`, `find_similar_companies`, `find_substitutes`, `rank_by_market_cap`, `resolve_ticker`.
 - `src/tools/geo.ts` — geography & structure: `list_countries`, `get_country_profile`, `compare_countries`, `get_segment_leaders`, `get_upstream_concentration`. Country is HQ, not fab location; every tool here says so.
-- `src/tools/graphtools.ts` — graph analysis: `find_paths_between`, `explain_relationship`, `simulate_disruption`, `find_single_source_dependencies`, `rank_by_connectivity`, `find_common_suppliers`.
+- `src/tools/graphtools.ts` — graph analysis: `find_paths_between`, `explain_relationship`, `diff_supply_chains`, `simulate_disruption`, `find_single_source_dependencies`, `rank_by_connectivity`, `find_common_suppliers`.
 - `src/tools/deals.ts` — deals & dataset: `get_deal`, `find_deals_by_company`, `get_ma_activity_summary`, `find_consolidation_hotspots`, `get_dataset_stats`.
 - `src/tools/meta.ts` — `recommend_tools` (intent → tool routing for agents).
 - `src/ratelimit.ts` — optional KV rate-limit; wired in `src/index.ts` when Worker var `RATE_LIMIT_ENABLED=1`.

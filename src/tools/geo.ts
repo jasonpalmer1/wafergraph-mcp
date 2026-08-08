@@ -9,7 +9,6 @@
 // five tools as "where the chips are actually made" would be a real
 // misread of the data — so every response says so, not just the tool docs.
 import { z } from "zod";
-import { getCompanies } from "../data";
 import { resolveCompany, suppliersOf, customersOf } from "../graph";
 import { loadGraph } from "./ctxload";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
@@ -99,7 +98,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ segment }) => {
       void recordUsage(ctx.env, "list_countries", ctx.isSelfTest());
-      const companies = await getCompanies();
+      const { companies } = await loadGraph();
       const seg = segment?.trim().toLowerCase();
 
       const scope = seg ? companies.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg)) : companies;
@@ -263,7 +262,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ countries }) => {
       void recordUsage(ctx.env, "compare_countries", ctx.isSelfTest());
-      const companies = await getCompanies();
+      const { companies } = await loadGraph();
 
       const resolved: string[] = [];
       const unresolved: Array<{ input: string; suggestions: string[] }> = [];
@@ -358,7 +357,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
     },
     async ({ segment }) => {
       void recordUsage(ctx.env, "get_segment_leaders", ctx.isSelfTest());
-      const companies = await getCompanies();
+      const { companies } = await loadGraph();
       const seg = segment?.trim().toLowerCase();
 
       let segIds: string[];

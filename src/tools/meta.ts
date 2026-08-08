@@ -25,7 +25,12 @@ const ROUTING: Array<{
   {
     intent: "How are two companies connected?",
     primary: "explain_relationship",
-    also: ["find_paths_between", "compare_companies"],
+    also: ["find_paths_between", "compare_companies", "diff_supply_chains"],
+  },
+  {
+    intent: "How do two companies' suppliers or customers overlap?",
+    primary: "diff_supply_chains",
+    also: ["explain_relationship", "find_common_suppliers", "compare_companies"],
   },
   {
     intent: "Screen / filter the universe",
@@ -94,6 +99,10 @@ export const registerMetaTools: ToolRegistrar = (server, ctx) => {
         // Light synonym boosts
         if (/ticker|symbol|nvda|tsm/.test(q) && row.primary === "resolve_ticker") score += 5;
         if (/path|connect|between|depend/.test(q) && row.primary === "explain_relationship") score += 5;
+        if (/overlap|diff|unique.?suppl|unique.?custom|only.?a|symmetric/.test(q) && row.primary === "diff_supply_chains")
+          score += 5;
+        if (/suppl|custom/.test(q) && /overlap|shared|compare|diff/.test(q) && row.primary === "diff_supply_chains")
+          score += 3;
         if (/choke|single.?source|bottleneck/.test(q) && row.primary === "find_chokepoints") score += 5;
         if (/substitut|alternativ|replace/.test(q) && row.primary === "find_substitutes") score += 5;
         if (/deal|m&a|acqui|merger|consolidat/.test(q) && row.primary === "get_deals") score += 5;

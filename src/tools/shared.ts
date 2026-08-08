@@ -6,6 +6,7 @@
 // them without importing from the agent (which would be circular).
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { companyUrl } from "../attribution";
+import { cacheAgeMs } from "../data";
 import type { Company, DealParty } from "../types";
 import type { Graph } from "../graph";
 
@@ -18,8 +19,16 @@ export interface ToolCtx {
 
 export type ToolRegistrar = (server: McpServer, ctx: ToolCtx) => void;
 
+/** Success payload helper. Attaches live-cache freshness next to data/attribution/links. */
 export function jsonResult(payload: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(payload) }] };
+  const body =
+    payload !== null && typeof payload === "object" && !Array.isArray(payload)
+      ? {
+          ...(payload as Record<string, unknown>),
+          freshness: { live_cache_age_ms: cacheAgeMs() },
+        }
+      : payload;
+  return { content: [{ type: "text" as const, text: JSON.stringify(body) }] };
 }
 
 export function errorResult(message: string, extra?: Record<string, unknown>) {
