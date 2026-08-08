@@ -314,23 +314,38 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
       title: "Get M&A deals",
       description:
         "Search wafergraph's semiconductor & AI supply-chain M&A corpus (74 acquisitions/mergers, including notable " +
-        "terminated attempts) by title/summary substring and/or segment. Returns a compact list capped at 30 with a total match count.",
+        "terminated attempts) by title/summary substring, segment, status, and/or announcement year. Returns a " +
+        "compact list capped at 30 with a total match count.",
       inputSchema: {
         query: z.string().optional().describe("Case-insensitive substring match against deal title and summary."),
         segment: z
           .string()
           .optional()
           .describe("Filter to deals where at least one named party is a company in this taxonomy segment id."),
+        status: z
+          .string()
+          .optional()
+          .describe("Filter by deal status substring (case-insensitive), e.g. 'completed', 'terminated', 'pending'."),
+        year: z
+          .number()
+          .int()
+          .min(1980)
+          .max(2100)
+          .optional()
+          .describe("Filter to deals whose announced date starts with this calendar year (e.g. 2020)."),
       },
     },
-    async ({ query, segment }) => {
+    async ({ query, segment, status, year }) => {
       void recordUsage(ctx.env, "get_deals", ctx.isSelfTest());
       const { companies, deals, graph } = await loadAll();
       const q = query?.trim().toLowerCase();
       const seg = segment?.trim().toLowerCase();
+      const st = status?.trim().toLowerCase();
 
       const matches = deals.filter((d) => {
         if (q && !((d.title ?? "").toLowerCase().includes(q) || (d.summary ?? "").toLowerCase().includes(q))) return false;
+        if (st && !(d.status ?? "").toLowerCase().includes(st)) return false;
+        if (year != null && !(d.announced ?? "").startsWith(String(year))) return false;
         if (seg) {
           // Match parties by id OR name (null-id parties are common in the corpus).
           const inSegment = d.parties.some((p) => {
@@ -361,7 +376,17 @@ export const registerCoreTools: ToolRegistrar = (server, ctx) => {
       }));
 
       return jsonResult({
-        data: { results, total: matches.length, returned: results.length },
+        data: {
+          results,
+          total: matches.length,
+          returned: results.length,
+          filters: {
+            query: query ?? null,
+            segment: segment ?? null,
+            status: status ?? null,
+            year: year ?? null,
+          },
+        },
         attribution: attributionGeneric(),
         links: LINKS,
       });

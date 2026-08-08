@@ -91,6 +91,12 @@ leaders, edge density, shared top HQ countries. Smoke + ROUTING included.
 
 `src/version.ts` (`PACKAGE_VERSION`, `TOOL_COUNT`), landing uses them,
 `npm run check:versions` asserts package.json / server.json / version.ts agree.
+Smoke asserts `tools/list.length === TOOL_COUNT`.
+
+### A9. ✅ `get_deals` status + year filters
+
+Optional `status` (substring) and `year` (announced prefix) on `get_deals` —
+no new tool; agents no longer need to post-filter the 30-row page.
 
 ---
 

@@ -55,7 +55,7 @@ const CASES = {
   get_company: { id: "tsmc" },
   get_segments: {},
   get_supply_chain: { id: "nvidia", direction: "up", depth: 2 },
-  get_deals: {},
+  get_deals: { year: 2020, status: "completed" },
   compare_companies: { ids: ["nvidia", "amd"] },
   get_country_exposure: { segment: "foundry" },
   find_chokepoints: { segment: "foundry" },
