@@ -6,7 +6,8 @@
 // them without importing from the agent (which would be circular).
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { companyUrl } from "../attribution";
-import type { Company } from "../types";
+import { liveFreshness } from "../data";
+import type { Company, DealParty } from "../types";
 import type { Graph } from "../graph";
 
 export interface ToolCtx {
@@ -18,8 +19,30 @@ export interface ToolCtx {
 
 export type ToolRegistrar = (server: McpServer, ctx: ToolCtx) => void;
 
+/** Success payload helper. Attaches live-cache freshness next to data/attribution/links. */
 export function jsonResult(payload: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(payload) }] };
+  const body =
+    payload !== null && typeof payload === "object" && !Array.isArray(payload)
+      ? {
+          ...(payload as Record<string, unknown>),
+          freshness: liveFreshness(),
+        }
+      : payload;
+  return { content: [{ type: "text" as const, text: JSON.stringify(body) }] };
+}
+
+/** Sort company ids by market cap descending (unpriced last), then name. */
+export function sortIdsByMarketCap(graph: Graph, ids: string[]): string[] {
+  return ids.slice().sort((a, b) => {
+    const ac = graph.byId.get(a)?.market_cap_usd_b;
+    const bc = graph.byId.get(b)?.market_cap_usd_b;
+    if (ac == null && bc == null) {
+      return (graph.byId.get(a)?.name ?? a).localeCompare(graph.byId.get(b)?.name ?? b);
+    }
+    if (ac == null) return 1;
+    if (bc == null) return -1;
+    return bc - ac;
+  });
 }
 
 export function errorResult(message: string, extra?: Record<string, unknown>) {
@@ -89,4 +112,52 @@ export function tallyBy<T>(items: T[], key: (item: T) => string | string[]): Arr
     }
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, count }));
+}
+
+// Small set of obvious aliases for a ~29-country dataset. Matching itself is
+// always case-insensitive exact-string against the real values in companies.json
+// — this only maps common shorthands onto those real strings. Shared so every
+// tool that takes a country input behaves the same (geo, screen, disruption…).
+const COUNTRY_ALIASES: Record<string, string> = {
+  usa: "united states",
+  us: "united states",
+  "u.s.": "united states",
+  "u.s.a.": "united states",
+  america: "united states",
+  uk: "united kingdom",
+  "u.k.": "united kingdom",
+  britain: "united kingdom",
+  "great britain": "united kingdom",
+  korea: "south korea",
+  "republic of korea": "south korea",
+  rok: "south korea",
+  czechia: "czech republic",
+};
+
+/** Lowercase + alias-normalize a country query string. */
+export function normalizeCountryQuery(raw: string): string {
+  const trimmed = raw.trim().toLowerCase();
+  return COUNTRY_ALIASES[trimmed] ?? trimmed;
+}
+
+/** Resolve a country query to the canonical casing used in the dataset, or undefined. */
+export function resolveCountry(companies: Company[], raw: string): string | undefined {
+  const target = normalizeCountryQuery(raw);
+  return [...new Set(companies.map((c) => c.country))].find((c) => c.toLowerCase() === target);
+}
+
+/** Resolve a deal party to a dataset company: id first, then exact name (null-id safe). */
+export function resolvePartyCompany(
+  companies: Company[],
+  graph: Graph,
+  party: DealParty,
+): { company: Company | null; method: "id" | "name" | null } {
+  if (party.id) {
+    const byId = graph.byId.get(party.id);
+    if (byId) return { company: byId, method: "id" };
+  }
+  const needle = party.name.trim().toLowerCase();
+  const byName = companies.find((c) => c.name.trim().toLowerCase() === needle);
+  if (byName) return { company: byName, method: "name" };
+  return { company: null, method: null };
 }

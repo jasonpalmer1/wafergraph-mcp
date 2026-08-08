@@ -15,6 +15,13 @@
 const BASE = (process.argv[2] || "https://mcp.wafergraph.com").replace(/\/$/, "");
 const URL_MCP = `${BASE}/mcp`;
 
+// Keep in sync with src/version.ts TOOL_COUNT (smoke fails on drift).
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+const versionTs = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/version.ts"), "utf8");
+const EXPECTED_TOOL_COUNT = Number(versionTs.match(/TOOL_COUNT\s*=\s*(\d+)/)?.[1] ?? NaN);
+
 let sessionId = null;
 let nextId = 1;
 
@@ -44,11 +51,11 @@ async function rpc(method, params, { notify = false } = {}) {
 // One representative call per tool. Arguments are real ids from the dataset
 // so a silent empty result is visible as a failure, not mistaken for "works".
 const CASES = {
-  search_companies: { query: "wafer" },
+  search_companies: { query: "NVDA" },
   get_company: { id: "tsmc" },
   get_segments: {},
   get_supply_chain: { id: "nvidia", direction: "up", depth: 2 },
-  get_deals: {},
+  get_deals: { type: "acquisition", year: 2020, status: "completed", sort_by: "announced" },
   compare_companies: { ids: ["nvidia", "amd"] },
   get_country_exposure: { segment: "foundry" },
   find_chokepoints: { segment: "foundry" },
@@ -60,11 +67,13 @@ const CASES = {
   find_similar_companies: { id: "asml" },
   rank_by_market_cap: { segment: "design_fabless", limit: 5 },
   resolve_ticker: { queries: ["NVDA", "asml", "Shin-Etsu Chemical", "not_a_real_company"] },
+  find_substitutes: { id: "asml", limit: 5 },
 
   list_countries: {},
   get_country_profile: { country: "Taiwan" },
   compare_countries: { countries: ["Taiwan", "United States"] },
   get_segment_leaders: { segment: "foundry" },
+  compare_segments: { segments: ["foundry", "memory"], leaders_limit: 5 },
   get_upstream_concentration: { id: "tsmc" },
 
   find_paths_between: { from: "shin_etsu", to: "nvidia", max_depth: 3 },
@@ -72,20 +81,77 @@ const CASES = {
   find_single_source_dependencies: { segment: "foundry" },
   rank_by_connectivity: { metric: "customers", limit: 10 },
   find_common_suppliers: { company_ids: ["nvidia", "amd", "intel"] },
+  find_common_customers: { company_ids: ["tsmc", "samsung", "globalfoundries"] },
+  explain_relationship: { from: "nvidia", to: "tsmc", max_depth: 3, path_limit: 5 },
+  diff_supply_chains: { a: "nvidia", b: "amd", side: "both", limit: 10 },
 
   get_deal: { id: "amd_xilinx" },
   find_deals_by_company: { company: "amd" },
   get_ma_activity_summary: {},
   find_consolidation_hotspots: {},
   get_dataset_stats: {},
+  list_stale_companies: { limit: 5, older_than_days_vs_newest: 30 },
+  recommend_tools: { intent: "who could replace ASML as a lithography supplier" },
 };
 
-function preview(result) {
+/** Light shape checks — still success-oriented, but empty/wrong payloads fail. */
+const ASSERTS = {
+  search_companies: (d) =>
+    Array.isArray(d?.results) && d.results.some((r) => r.id === "nvidia" || r.ticker === "NVDA"),
+  get_company: (d) => d?.company?.id === "tsmc" && Array.isArray(d?.suppliers),
+  get_deals: (d) =>
+    Array.isArray(d?.results) &&
+    d.results.every((r) => r.type === "acquisition" && String(r.announced ?? "").startsWith("2020")),
+  compare_companies: (d) =>
+    Array.isArray(d?.companies) &&
+    Array.isArray(d?.shared_suppliers?.companies) &&
+    typeof d?.shared_suppliers?.total === "number",
+  get_supply_chain: (d) =>
+    d?.focal_id === "nvidia" &&
+    Array.isArray(d?.tiers) &&
+    !d.tiers.some((t) => t.tier !== 0 && (t.companies ?? []).some((c) => c.id === "nvidia")),
+  resolve_ticker: (d) => Array.isArray(d?.results) && typeof d?.matched_count === "number",
+  rank_by_market_cap: (d) => Array.isArray(d?.results) && d.results.every((r) => typeof r.market_cap_usd_b === "number"),
+  find_paths_between: (d) => Array.isArray(d?.paths) && typeof d?.total_collected === "number",
+  get_deal: (d) => typeof d?.id === "string" && d.id.includes("amd"),
+  get_dataset_stats: (d) => typeof d?.counts?.companies === "number" && d.counts.companies > 0,
+  list_stale_companies: (d) => Array.isArray(d?.results) && typeof d?.matching_total === "number",
+  compare_segments: (d) =>
+    Array.isArray(d?.segments) &&
+    d.segments.length >= 2 &&
+    typeof d.segments[0]?.country_hhi === "number",
+  find_common_customers: (d) => Array.isArray(d?.results) && typeof d?.input_company_count === "number",
+  simulate_disruption: (d) => d?.removed?.criterion === "company",
+  find_substitutes: (d) => Array.isArray(d?.results) && d?.focal?.id,
+  explain_relationship: (d) =>
+    d?.from?.id && d?.to?.id && Array.isArray(d?.paths) && typeof d?.summary === "string",
+  diff_supply_chains: (d) =>
+    d?.a?.id &&
+    d?.b?.id &&
+    d?.suppliers?.shared &&
+    d?.customers?.shared &&
+    typeof d?.suppliers?.jaccard === "number",
+  recommend_tools: (d) => Array.isArray(d?.recommendations) && d.recommendations[0]?.primary,
+};
+
+function preview(result, toolName) {
   const text = result?.content?.[0]?.text ?? "";
   try {
     const payload = JSON.parse(text);
     if (payload.error) return { ok: false, note: `tool returned error: ${payload.error}` };
-    const keys = Object.keys(payload.data ?? {});
+    if (
+      !payload.freshness ||
+      !("live_cache_age_ms" in payload.freshness) ||
+      typeof payload.freshness.stale !== "boolean"
+    ) {
+      return { ok: false, note: `missing freshness.{live_cache_age_ms,stale} on ${toolName}` };
+    }
+    const data = payload.data ?? {};
+    const assert = ASSERTS[toolName];
+    if (assert && !assert(data)) {
+      return { ok: false, note: `shape assert failed for ${toolName}; keys: ${Object.keys(data).slice(0, 8).join(", ")}` };
+    }
+    const keys = Object.keys(data);
     return { ok: true, note: `${text.length} bytes, data keys: ${keys.slice(0, 6).join(", ")}` };
   } catch {
     return { ok: false, note: `non-JSON response: ${text.slice(0, 120)}` };
@@ -103,20 +169,25 @@ const run = async () => {
   await rpc("notifications/initialized", {}, { notify: true });
 
   const listed = (await rpc("tools/list", {})).tools.map((t) => t.name);
-  console.log(`tools/list reports ${listed.length} tools\n`);
+  console.log(`tools/list reports ${listed.length} tools (expect ${EXPECTED_TOOL_COUNT})\n`);
 
   const uncovered = listed.filter((name) => !(name in CASES));
   const stale = Object.keys(CASES).filter((name) => !listed.includes(name));
 
   let pass = 0;
   const failures = [];
+  if (!Number.isFinite(EXPECTED_TOOL_COUNT)) {
+    failures.push("could not parse TOOL_COUNT from src/version.ts");
+  } else if (listed.length !== EXPECTED_TOOL_COUNT) {
+    failures.push(`tools/list count ${listed.length} !== TOOL_COUNT ${EXPECTED_TOOL_COUNT} in src/version.ts`);
+  }
 
   for (const name of listed) {
     if (!(name in CASES)) continue;
     process.stdout.write(`  ${name.padEnd(32)}`);
     try {
       const result = await rpc("tools/call", { name, arguments: CASES[name] });
-      const { ok, note } = preview(result);
+      const { ok, note } = preview(result, name);
       if (ok) {
         pass++;
         console.log(`ok    ${note}`);

@@ -17,12 +17,12 @@
 // `edge_coverage` in its payload and treats a thin/empty result as
 // "not documented", never as "does not exist."
 import { z } from "zod";
-import { getCompanies } from "../data";
-import { buildGraph, findCompany, suppliersOf, customersOf, type Graph } from "../graph";
+import { resolveCompany, suppliersOf, customersOf } from "../graph";
 import type { Company } from "../types";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
-import { jsonResult, errorResult, companyRef, type ToolRegistrar } from "./shared";
+import { jsonResult, errorResult, companyRef, normalizeCountryQuery, type ToolRegistrar } from "./shared";
+import { loadGraph } from "./ctxload";
 
 // ---- shared local helpers ----------------------------------------------
 
@@ -32,8 +32,8 @@ import { jsonResult, errorResult, companyRef, type ToolRegistrar } from "./share
 // "doesn't exist."
 function edgeCoverage(companies: Company[]) {
   const total = companies.length;
-  const withCustomers = companies.filter((c) => c.key_customers.length > 0).length;
-  const withSuppliers = companies.filter((c) => c.key_suppliers.length > 0).length;
+  const withCustomers = companies.filter((c) => (c.key_customers ?? []).length > 0).length;
+  const withSuppliers = companies.filter((c) => (c.key_suppliers ?? []).length > 0).length;
   return {
     total_companies: total,
     companies_with_documented_customers: withCustomers,
@@ -66,16 +66,6 @@ function suggestCompanies(companies: Company[], query: string, max = 5) {
     .sort((a, b) => b.score - a.score)
     .slice(0, max)
     .map((x) => ({ id: x.c.id, name: x.c.name }));
-}
-
-function buildTickerMap(companies: Company[]): Map<string, Company> {
-  const m = new Map<string, Company>();
-  for (const c of companies) if (c.ticker) m.set(c.ticker.toUpperCase(), c);
-  return m;
-}
-
-function resolveCompany(graph: Graph, byTicker: Map<string, Company>, raw: string): Company | undefined {
-  return findCompany(graph, raw) ?? byTicker.get(raw.trim().toUpperCase());
 }
 
 const subsegmentKey = (segment: string, subsegment: string) => `${segment}::${subsegment}`;
@@ -114,19 +104,17 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ from, to, max_depth, direction, limit }) => {
-      await recordUsage(ctx.env, "find_paths_between", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
-      const byTicker = buildTickerMap(companies);
+      void recordUsage(ctx.env, "find_paths_between", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
 
-      const fromCompany = resolveCompany(graph, byTicker, from);
+      const fromCompany = resolveCompany(graph, from);
       if (!fromCompany) {
         return errorResult(`No company found for "${from}".`, {
           hint: "Use search_companies to find a valid id, name, or ticker.",
           suggestions: suggestCompanies(companies, from),
         });
       }
-      const toCompany = resolveCompany(graph, byTicker, to);
+      const toCompany = resolveCompany(graph, to);
       if (!toCompany) {
         return errorResult(`No company found for "${to}".`, {
           hint: "Use search_companies to find a valid id, name, or ticker.",
@@ -142,52 +130,66 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       const depth = max_depth ?? 3;
       const cap = limit ?? 10;
       const EXPLORATION_BUDGET = 20000;
+      // When searching both directions, collect more per side before the final
+      // shortest-first merge so `either` doesn't under-fill the returned page.
+      const perSideCap = direction === "either" ? Math.min(cap * 2, 50) : cap;
 
-      function search(mode: "down" | "up"): { paths: string[][]; capped: boolean } {
+      // BFS by hop length so the first paths collected are the shortest.
+      // (DFS + early stop could fill the cap with longer paths and miss a
+      // direct edge that would have sorted first after the fact.)
+      function search(mode: "down" | "up"): { paths: string[][]; budgetHit: boolean; resultCapHit: boolean } {
         const results: string[][] = [];
-        const budget = { explored: 0 };
-        const visited = new Set<string>([src.id]);
-        const path: string[] = [src.id];
+        let explored = 0;
+        // Index cursor instead of shift() — O(1) pop on large frontiers.
+        const queue: Array<{ node: string; path: string[] }> = [{ node: src.id, path: [src.id] }];
+        let qi = 0;
 
-        function dfs(current: string, depthSoFar: number) {
-          if (results.length >= cap || budget.explored >= EXPLORATION_BUDGET) return;
-          budget.explored++;
-          if (depthSoFar >= depth) return;
-          const neighbors = mode === "down" ? customersOf(graph, current) : suppliersOf(graph, current);
+        while (qi < queue.length && results.length < perSideCap && explored < EXPLORATION_BUDGET) {
+          const { node, path } = queue[qi++]!;
+          explored++;
+          const depthSoFar = path.length - 1;
+          if (depthSoFar >= depth) continue;
+          const neighbors = mode === "down" ? customersOf(graph, node) : suppliersOf(graph, node);
           for (const next of neighbors) {
-            if (results.length >= cap || budget.explored >= EXPLORATION_BUDGET) return;
+            if (results.length >= perSideCap || explored >= EXPLORATION_BUDGET) break;
+            if (path.includes(next)) continue; // no cycles
+            const nextPath = [...path, next];
             if (next === dst.id) {
-              results.push([...path, next]);
+              results.push(nextPath);
               continue;
             }
-            if (visited.has(next)) continue;
-            visited.add(next);
-            path.push(next);
-            dfs(next, depthSoFar + 1);
-            path.pop();
-            visited.delete(next);
+            if (nextPath.length - 1 < depth) {
+              queue.push({ node: next, path: nextPath });
+            }
           }
         }
-        dfs(src.id, 0);
-        return { paths: results, capped: budget.explored >= EXPLORATION_BUDGET || results.length >= cap };
+        return {
+          paths: results,
+          budgetHit: explored >= EXPLORATION_BUDGET,
+          resultCapHit: results.length >= perSideCap,
+        };
       }
 
       const found: Array<{ ids: string[]; edgeDirection: "downstream" | "upstream" }> = [];
-      let searchCapped = false;
+      let budgetHit = false;
+      let sideCapHit = false;
       if (direction === "downstream" || direction === "either") {
         const r = search("down");
-        searchCapped = searchCapped || r.capped;
+        budgetHit = budgetHit || r.budgetHit;
+        sideCapHit = sideCapHit || r.resultCapHit;
         for (const p of r.paths) found.push({ ids: p, edgeDirection: "downstream" });
       }
       if (direction === "upstream" || direction === "either") {
         const r = search("up");
-        searchCapped = searchCapped || r.capped;
+        budgetHit = budgetHit || r.budgetHit;
+        sideCapHit = sideCapHit || r.resultCapHit;
         for (const p of r.paths) found.push({ ids: p, edgeDirection: "upstream" });
       }
 
       found.sort((a, b) => a.ids.length - b.ids.length);
       const totalFound = found.length;
       const sliced = found.slice(0, cap);
+      const searchCapped = budgetHit || sideCapHit || totalFound > cap;
 
       const paths = sliced.map((p) => {
         const hops = p.ids.length - 1;
@@ -212,9 +214,15 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
           direction_searched: direction,
           max_depth: depth,
           paths,
+          total_collected: totalFound,
           total: totalFound,
           returned: paths.length,
           search_capped: searchCapped,
+          ...(totalFound > cap
+            ? {
+                note: `Returning the ${cap} shortest of ${totalFound} collected path(s). search_capped=true means more may exist beyond the per-side/exploration budget.`,
+              }
+            : {}),
           ...(paths.length === 0
             ? {
                 message:
@@ -258,7 +266,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ company_id, country, segment, limit }) => {
-      await recordUsage(ctx.env, "simulate_disruption", ctx.isSelfTest());
+      void recordUsage(ctx.env, "simulate_disruption", ctx.isSelfTest());
       const provided = [company_id, country, segment].filter((v) => v !== undefined && v.trim() !== "");
       if (provided.length !== 1) {
         return errorResult("Exactly one of company_id, country, or segment is required.", {
@@ -266,8 +274,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
         });
       }
 
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
+      const { companies, graph } = await loadGraph();
       const byId = graph.byId;
 
       let removedIds: Set<string>;
@@ -275,7 +282,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       let criterionValue: string;
 
       if (company_id) {
-        const c = findCompany(graph, company_id);
+        const c = resolveCompany(graph, company_id);
         if (!c) {
           return errorResult(`No company found for "${company_id}".`, {
             hint: "Use search_companies to find a valid id, name, or ticker.",
@@ -286,16 +293,16 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
         criterion = "company";
         criterionValue = c.id;
       } else if (country) {
-        const ctry = country.trim().toLowerCase();
+        const ctry = normalizeCountryQuery(country);
         const matches = companies.filter((c) => c.country.toLowerCase() === ctry);
         if (matches.length === 0) {
           return errorResult(`No companies found headquartered in "${country}".`, {
-            hint: "Use get_country_exposure to see valid country values.",
+            hint: "Use get_country_exposure or list_countries to see valid country values (aliases like USA/UK also work).",
           });
         }
         removedIds = new Set(matches.map((c) => c.id));
         criterion = "country";
-        criterionValue = country;
+        criterionValue = matches[0]!.country;
       } else {
         const seg = segment!.trim().toLowerCase();
         const matches = companies.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg));
@@ -354,9 +361,11 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
 
         return {
           company: companyRef(graph, cid),
-          lost_suppliers: lostSupplierIds.map((id) => companyRef(graph, id)),
+          lost_supplier_count: lostSupplierIds.length,
+          lost_suppliers: lostSupplierIds.slice(0, ALT_CAP).map((id) => companyRef(graph, id)),
           remaining_supplier_count: remainingSupplierIds.length,
-          subsegment_impact: subsegmentImpact,
+          subsegment_impact: subsegmentImpact.slice(0, 12),
+          subsegment_impact_total: subsegmentImpact.length,
           zero_alternative_subsegment_count: zeroAltSubsegments.length,
           has_zero_alternative: zeroAltSubsegments.length > 0,
         };
@@ -367,7 +376,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
         if (b.zero_alternative_subsegment_count !== a.zero_alternative_subsegment_count) {
           return b.zero_alternative_subsegment_count - a.zero_alternative_subsegment_count;
         }
-        return b.lost_suppliers.length - a.lost_suppliers.length;
+        return b.lost_supplier_count - a.lost_supplier_count;
       });
 
       const cap = limit ?? 20;
@@ -425,19 +434,18 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ segment, country, limit }) => {
-      await recordUsage(ctx.env, "find_single_source_dependencies", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
+      void recordUsage(ctx.env, "find_single_source_dependencies", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
       const byId = graph.byId;
 
       const seg = segment?.trim().toLowerCase();
-      const ctry = country?.trim().toLowerCase();
+      const ctry = country ? normalizeCountryQuery(country) : undefined;
       let scope = companies;
       if (seg) scope = scope.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg));
       if (ctry) scope = scope.filter((c) => c.country.toLowerCase() === ctry);
       if (scope.length === 0) {
         return errorResult("No companies match the given scope.", {
-          hint: "Use get_segments / get_country_exposure for valid segment/country values.",
+          hint: "Use get_segments / list_countries for valid segment/country values (aliases like USA/UK work).",
         });
       }
 
@@ -527,18 +535,17 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ metric, segment, country, limit }) => {
-      await recordUsage(ctx.env, "rank_by_connectivity", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
+      void recordUsage(ctx.env, "rank_by_connectivity", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
 
       const seg = segment?.trim().toLowerCase();
-      const ctry = country?.trim().toLowerCase();
+      const ctry = country ? normalizeCountryQuery(country) : undefined;
       let scope = companies;
       if (seg) scope = scope.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg));
       if (ctry) scope = scope.filter((c) => c.country.toLowerCase() === ctry);
       if (scope.length === 0) {
         return errorResult("No companies match the given scope.", {
-          hint: "Use get_segments / get_country_exposure for valid segment/country values.",
+          hint: "Use get_segments / list_countries for valid segment/country values (aliases like USA/UK work).",
         });
       }
 
@@ -606,7 +613,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ company_ids, segment, limit }) => {
-      await recordUsage(ctx.env, "find_common_suppliers", ctx.isSelfTest());
+      void recordUsage(ctx.env, "find_common_suppliers", ctx.isSelfTest());
       const hasIds = company_ids !== undefined && company_ids.length > 0;
       const hasSegment = segment !== undefined && segment.trim() !== "";
       if (hasIds === hasSegment) {
@@ -615,9 +622,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
         });
       }
 
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
-      const byTicker = buildTickerMap(companies);
+      const { companies, graph } = await loadGraph();
 
       let inputCompanies: Company[];
       let unresolved: string[] = [];
@@ -635,7 +640,7 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       } else {
         const resolved: Company[] = [];
         for (const raw of company_ids!) {
-          const c = resolveCompany(graph, byTicker, raw);
+          const c = resolveCompany(graph, raw);
           if (c && !resolved.some((r) => r.id === c.id)) resolved.push(c);
           else if (!c) unresolved.push(raw);
         }
@@ -659,27 +664,56 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
         }
       }
 
+      // Cap served_companies per row — segment mode can list dozens of buyers
+      // for a common supplier and blow agent context.
+      const SERVED_LIST_CAP = 10;
       const results = [...tally.entries()]
-        .map(([sid, servedSet]) => ({
-          ...companyRef(graph, sid),
-          served_count: servedSet.size,
-          served_share: `${servedSet.size}/${inputCompanies.length}`,
-          served_companies: [...servedSet].map((id) => companyRef(graph, id)),
-        }))
+        .map(([sid, servedSet]) => {
+          const servedIds = [...servedSet];
+          return {
+            ...companyRef(graph, sid),
+            served_count: servedSet.size,
+            served_share: `${servedSet.size}/${inputCompanies.length}`,
+            served_companies: servedIds.slice(0, SERVED_LIST_CAP).map((id) => companyRef(graph, id)),
+            served_companies_returned: Math.min(servedIds.length, SERVED_LIST_CAP),
+            ...(servedIds.length > SERVED_LIST_CAP
+              ? { served_companies_truncated: true as const }
+              : {}),
+          };
+        })
         .sort((a, b) => b.served_count - a.served_count);
 
       const cap = limit ?? 20;
       const sliced = results.slice(0, cap);
       const INPUT_CAP = 15;
+      const inputListed = inputCompanies.slice(0, INPUT_CAP).map((c) => companyRef(graph, c.id));
+      const inputTruncated = inputCompanies.length > INPUT_CAP;
 
       return jsonResult({
         data: {
           input_mode: inputMode,
-          input_companies: inputCompanies.slice(0, INPUT_CAP).map((c) => companyRef(graph, c.id)),
+          input_companies: inputListed,
           input_company_count: inputCompanies.length,
+          ...(inputTruncated
+            ? {
+                input_companies_truncated: true,
+                input_companies_listed: inputListed.length,
+                note:
+                  `input_companies lists the first ${INPUT_CAP} of ${inputCompanies.length} companies analyzed; ` +
+                  "the overlap tally uses the full input set (see input_company_count).",
+              }
+            : {}),
           ...(unresolved.length ? { unresolved } : {}),
           input_companies_with_no_documented_suppliers: noSuppliers.length,
-          input_companies_with_no_documented_suppliers_list: noSuppliers.map((c) => companyRef(graph, c.id)),
+          input_companies_with_no_documented_suppliers_list: noSuppliers
+            .slice(0, INPUT_CAP)
+            .map((c) => companyRef(graph, c.id)),
+          ...(noSuppliers.length > INPUT_CAP
+            ? {
+                input_companies_with_no_documented_suppliers_list_truncated: true,
+                note_no_suppliers_list: `List capped at ${INPUT_CAP}; see input_companies_with_no_documented_suppliers for the full count.`,
+              }
+            : {}),
           results: sliced,
           total: results.length,
           returned: sliced.length,
@@ -692,6 +726,375 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
             "low overlap number can mean either genuinely few shared suppliers or thin documentation — check " +
             "input_companies_with_no_documented_suppliers_list before concluding low correlation.",
           edge_coverage: edgeCoverage(companies),
+        },
+        attribution: attributionGeneric(),
+        links: LINKS,
+      });
+    },
+  );
+
+  // ==== 5b. find_common_customers ========================================
+  // Downstream twin of find_common_suppliers — same input contract, flipped edges.
+  server.registerTool(
+    "find_common_customers",
+    {
+      title: "Find common customers",
+      description:
+        "The shared-downstream question over a set of companies: given 2-15 company ids/tickers, or a segment id, " +
+        "rank customers by how many of the input companies documentedly sell to them. Twin of find_common_suppliers " +
+        "for the customer side. Also reports how many input companies had no documented customers.",
+      inputSchema: {
+        company_ids: z
+          .array(z.string())
+          .min(2)
+          .max(15)
+          .optional()
+          .describe("2-15 company ids, names, or tickers. Exactly one of company_ids/segment is required."),
+        segment: z.string().optional().describe("Use every company in this taxonomy segment id instead of an explicit list (see get_segments)."),
+        limit: z.number().int().min(1).max(100).optional().default(20).describe("Max number of ranked customers to return (1-100, default 20)."),
+      },
+    },
+    async ({ company_ids, segment, limit }) => {
+      void recordUsage(ctx.env, "find_common_customers", ctx.isSelfTest());
+      const hasIds = company_ids !== undefined && company_ids.length > 0;
+      const hasSegment = segment !== undefined && segment.trim() !== "";
+      if (hasIds === hasSegment) {
+        return errorResult("Exactly one of company_ids or segment is required.", {
+          received: { company_ids: company_ids ?? null, segment: segment ?? null },
+        });
+      }
+
+      const { companies, graph } = await loadGraph();
+
+      let inputCompanies: Company[];
+      let unresolved: string[] = [];
+      let inputMode: "company_ids" | "segment";
+
+      if (hasSegment) {
+        const seg = segment!.trim().toLowerCase();
+        inputCompanies = companies.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg));
+        if (inputCompanies.length < 2) {
+          return errorResult(`Segment "${segment}" has fewer than 2 companies — need at least 2 to find shared customers.`, {
+            hint: "Use get_segments for the list of valid segment ids and their company counts.",
+          });
+        }
+        inputMode = "segment";
+      } else {
+        const resolved: Company[] = [];
+        for (const raw of company_ids!) {
+          const c = resolveCompany(graph, raw);
+          if (c && !resolved.some((r) => r.id === c.id)) resolved.push(c);
+          else if (!c) unresolved.push(raw);
+        }
+        if (resolved.length < 2) {
+          return errorResult("Need at least 2 resolvable companies to find shared customers.", {
+            unresolved,
+            hint: "Use search_companies to find valid ids, names, or tickers.",
+          });
+        }
+        inputCompanies = resolved;
+        inputMode = "company_ids";
+      }
+
+      const noCustomers = inputCompanies.filter((c) => customersOf(graph, c.id).length === 0);
+
+      const tally = new Map<string, Set<string>>(); // customerId -> Set of selling input company ids
+      for (const c of inputCompanies) {
+        for (const cid of customersOf(graph, c.id)) {
+          if (!tally.has(cid)) tally.set(cid, new Set());
+          tally.get(cid)!.add(c.id);
+        }
+      }
+
+      const SERVED_LIST_CAP = 10;
+      const results = [...tally.entries()]
+        .map(([cid, sellerSet]) => {
+          const sellerIds = [...sellerSet];
+          return {
+            ...companyRef(graph, cid),
+            served_by_count: sellerSet.size,
+            served_by_share: `${sellerSet.size}/${inputCompanies.length}`,
+            served_by_companies: sellerIds.slice(0, SERVED_LIST_CAP).map((id) => companyRef(graph, id)),
+            served_by_companies_returned: Math.min(sellerIds.length, SERVED_LIST_CAP),
+            ...(sellerIds.length > SERVED_LIST_CAP ? { served_by_companies_truncated: true as const } : {}),
+          };
+        })
+        .sort((a, b) => b.served_by_count - a.served_by_count);
+
+      const cap = limit ?? 20;
+      const sliced = results.slice(0, cap);
+      const INPUT_CAP = 15;
+      const inputListed = inputCompanies.slice(0, INPUT_CAP).map((c) => companyRef(graph, c.id));
+
+      return jsonResult({
+        data: {
+          input_mode: inputMode,
+          input_companies: inputListed,
+          input_company_count: inputCompanies.length,
+          ...(inputCompanies.length > INPUT_CAP
+            ? {
+                input_companies_truncated: true,
+                input_companies_listed: inputListed.length,
+                note:
+                  `input_companies lists the first ${INPUT_CAP} of ${inputCompanies.length} companies analyzed; ` +
+                  "the overlap tally uses the full input set (see input_company_count).",
+              }
+            : {}),
+          ...(unresolved.length ? { unresolved } : {}),
+          input_companies_with_no_documented_customers: noCustomers.length,
+          input_companies_with_no_documented_customers_list: noCustomers
+            .slice(0, INPUT_CAP)
+            .map((c) => companyRef(graph, c.id)),
+          results: sliced,
+          total: results.length,
+          returned: sliced.length,
+          methodology:
+            "For each candidate customer, served_by_count = how many of the input companies document it as a customer " +
+            "(directly, or it documents them as a supplier — edges are merged from both directions). Ranked by " +
+            "served_by_count descending.",
+          caveat:
+            `${noCustomers.length} of ${inputCompanies.length} input companies have zero documented customers, so a ` +
+            "low overlap number can mean either genuinely few shared customers or thin documentation.",
+          edge_coverage: edgeCoverage(companies),
+        },
+        attribution: attributionGeneric(),
+        links: LINKS,
+      });
+    },
+  );
+
+  // ---- 6. explain_relationship ==========================================
+  // One-shot "how are these two connected?" for agents that currently chain
+  // find_paths_between + compare_companies. Keeps depth/path caps tight.
+  server.registerTool(
+    "explain_relationship",
+    {
+      title: "Explain relationship between two companies",
+      description:
+        "Single-call overview of how two companies relate in the documented supply graph: shortest paths (either " +
+        "direction, up to 3 hops), shared suppliers, and shared customers. Prefer this over separately calling " +
+        "find_paths_between and compare_companies when the question is just 'how are A and B connected?'.",
+      inputSchema: {
+        from: z.string().describe("First company id, name, or ticker."),
+        to: z.string().describe("Second company id, name, or ticker."),
+        max_depth: z.number().int().min(1).max(3).optional().default(3).describe("Max path hops (default 3, hard max 3)."),
+        path_limit: z.number().int().min(1).max(10).optional().default(5).describe("Max paths to return (default 5)."),
+      },
+    },
+    async ({ from, to, max_depth, path_limit }) => {
+      void recordUsage(ctx.env, "explain_relationship", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
+      const a = resolveCompany(graph, from);
+      const b = resolveCompany(graph, to);
+      if (!a || !b) {
+        return errorResult("Could not resolve both companies.", {
+          from: a ? companyRef(graph, a.id) : null,
+          to: b ? companyRef(graph, b.id) : null,
+          unresolved: [!a ? from : null, !b ? to : null].filter(Boolean),
+          hint: "Use search_companies or resolve_ticker first.",
+          suggestions_from: a ? [] : suggestCompanies(companies, from),
+          suggestions_to: b ? [] : suggestCompanies(companies, to),
+        });
+      }
+      if (a.id === b.id) {
+        return errorResult("Both inputs resolved to the same company — need two distinct companies.");
+      }
+
+      const depth = Math.min(max_depth ?? 3, 3);
+      const pathCap = Math.min(path_limit ?? 5, 10);
+      const EXPLORATION_BUDGET = 12000;
+
+      function collectPaths(srcId: string, dstId: string, mode: "down" | "up"): string[][] {
+        const results: string[][] = [];
+        let explored = 0;
+        const queue: Array<{ node: string; path: string[] }> = [{ node: srcId, path: [srcId] }];
+        let qi = 0;
+        while (qi < queue.length && results.length < pathCap && explored < EXPLORATION_BUDGET) {
+          const { node, path } = queue[qi++]!;
+          explored++;
+          if (path.length - 1 >= depth) continue;
+          const neighbors = mode === "down" ? customersOf(graph, node) : suppliersOf(graph, node);
+          for (const next of neighbors) {
+            if (results.length >= pathCap) break;
+            if (path.includes(next)) continue;
+            const nextPath = [...path, next];
+            if (next === dstId) {
+              results.push(nextPath);
+              continue;
+            }
+            if (nextPath.length - 1 < depth) queue.push({ node: next, path: nextPath });
+          }
+        }
+        return results;
+      }
+
+      const down = collectPaths(a.id, b.id, "down").map((ids) => ({
+        direction: "downstream" as const,
+        length: ids.length - 1,
+        companies: ids.map((id) => companyRef(graph, id)),
+        summary: `${a.name} supplies toward ${b.name} in ${ids.length - 1} hop(s).`,
+      }));
+      const up = collectPaths(a.id, b.id, "up").map((ids) => ({
+        direction: "upstream" as const,
+        length: ids.length - 1,
+        companies: ids.map((id) => companyRef(graph, id)),
+        summary: `${a.name} depends toward ${b.name} in ${ids.length - 1} hop(s).`,
+      }));
+      const paths = [...down, ...up].sort((x, y) => x.length - y.length).slice(0, pathCap);
+
+      const aSup = new Set(suppliersOf(graph, a.id));
+      const bSup = new Set(suppliersOf(graph, b.id));
+      const aCust = new Set(customersOf(graph, a.id));
+      const bCust = new Set(customersOf(graph, b.id));
+      const SHARED_CAP = 25;
+      const byCap = (ids: string[]) =>
+        ids
+          .slice()
+          .sort(
+            (x, y) =>
+              (graph.byId.get(y)?.market_cap_usd_b ?? -1) - (graph.byId.get(x)?.market_cap_usd_b ?? -1) ||
+              (graph.byId.get(x)?.name ?? "").localeCompare(graph.byId.get(y)?.name ?? ""),
+          );
+      const sharedSupIds = byCap([...aSup].filter((id) => bSup.has(id)));
+      const sharedCustIds = byCap([...aCust].filter((id) => bCust.has(id)));
+      const shared_suppliers = sharedSupIds.slice(0, SHARED_CAP).map((id) => companyRef(graph, id));
+      const shared_customers = sharedCustIds.slice(0, SHARED_CAP).map((id) => companyRef(graph, id));
+      const direct =
+        aCust.has(b.id) || aSup.has(b.id)
+          ? {
+              a_supplies_b: aCust.has(b.id),
+              a_depends_on_b: aSup.has(b.id),
+            }
+          : { a_supplies_b: false, a_depends_on_b: false };
+
+      return jsonResult({
+        data: {
+          from: companyRef(graph, a.id),
+          to: companyRef(graph, b.id),
+          direct_edge: direct,
+          paths,
+          path_count: paths.length,
+          shared_suppliers,
+          shared_customers,
+          shared_supplier_count: sharedSupIds.length,
+          shared_customer_count: sharedCustIds.length,
+          shared_lists_capped_at: SHARED_CAP,
+          max_depth: depth,
+          summary:
+            paths.length === 0 && !direct.a_supplies_b && !direct.a_depends_on_b
+              ? `No documented path within ${depth} hops between ${a.name} and ${b.name}; they share ${sharedSupIds.length} supplier(s) and ${sharedCustIds.length} customer(s).`
+              : `${a.name} ↔ ${b.name}: ${paths.length} path(s) within ${depth} hops; ${sharedSupIds.length} shared supplier(s); ${sharedCustIds.length} shared customer(s).`,
+          edge_coverage: edgeCoverage(companies),
+          caveat:
+            "Documented edges only — absence of a path is not proof of no commercial relationship. See edge_coverage. " +
+            "Shared supplier/customer lists are capped; counts are uncapped.",
+        },
+        attribution: attributionGeneric(),
+        links: LINKS,
+      });
+    },
+  );
+
+  // ---- 7. diff_supply_chains ============================================
+  // Set-diff of documented suppliers/customers — cheaper than two full
+  // get_supply_chain walks when the question is overlap vs unique deps.
+  server.registerTool(
+    "diff_supply_chains",
+    {
+      title: "Diff two supply chains",
+      description:
+        "Compare the documented 1-hop supplier and/or customer sets of two companies: shared, only-A, and only-B. " +
+        "Prefer this over two get_supply_chain calls when asking how their immediate chains overlap. " +
+        "For multi-hop paths use explain_relationship.",
+      inputSchema: {
+        a: z.string().describe("First company id, name, or ticker."),
+        b: z.string().describe("Second company id, name, or ticker."),
+        side: z
+          .enum(["suppliers", "customers", "both"])
+          .optional()
+          .default("both")
+          .describe("Which neighbor sets to diff. Default both."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .default(25)
+          .describe("Max companies to return per bucket (shared / only_a / only_b), 1-50. Default 25."),
+      },
+    },
+    async ({ a, b, side, limit }) => {
+      void recordUsage(ctx.env, "diff_supply_chains", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
+      const left = resolveCompany(graph, a);
+      const right = resolveCompany(graph, b);
+      if (!left || !right) {
+        return errorResult("Could not resolve both companies.", {
+          a: left ? companyRef(graph, left.id) : null,
+          b: right ? companyRef(graph, right.id) : null,
+          unresolved: [!left ? a : null, !right ? b : null].filter(Boolean),
+          hint: "Use search_companies or resolve_ticker first.",
+          suggestions_a: left ? [] : suggestCompanies(companies, a),
+          suggestions_b: right ? [] : suggestCompanies(companies, b),
+        });
+      }
+      if (left.id === right.id) {
+        return errorResult("Both inputs resolved to the same company — need two distinct companies.");
+      }
+
+      const lim = Math.min(Math.max(limit ?? 25, 1), 50);
+
+      function bucket(leftIds: string[], rightIds: string[]) {
+        const L = new Set(leftIds);
+        const R = new Set(rightIds);
+        const sharedIds = [...L].filter((id) => R.has(id));
+        const onlyAIds = [...L].filter((id) => !R.has(id));
+        const onlyBIds = [...R].filter((id) => !L.has(id));
+        const byCap = (ids: string[]) =>
+          ids
+            .slice()
+            .sort(
+              (x, y) =>
+                (graph.byId.get(y)?.market_cap_usd_b ?? -1) - (graph.byId.get(x)?.market_cap_usd_b ?? -1) ||
+                (graph.byId.get(x)?.name ?? "").localeCompare(graph.byId.get(y)?.name ?? ""),
+            );
+        const pack = (ids: string[]) => {
+          const sorted = byCap(ids);
+          return {
+            total: sorted.length,
+            returned: Math.min(sorted.length, lim),
+            companies: sorted.slice(0, lim).map((id) => companyRef(graph, id)),
+          };
+        };
+        return {
+          shared: pack(sharedIds),
+          only_a: pack(onlyAIds),
+          only_b: pack(onlyBIds),
+          jaccard:
+            L.size + R.size === 0
+              ? 0
+              : Number((sharedIds.length / (L.size + R.size - sharedIds.length)).toFixed(4)),
+        };
+      }
+
+      const wantSup = side === "suppliers" || side === "both";
+      const wantCust = side === "customers" || side === "both";
+
+      return jsonResult({
+        data: {
+          a: companyRef(graph, left.id),
+          b: companyRef(graph, right.id),
+          side,
+          ...(wantSup
+            ? { suppliers: bucket(suppliersOf(graph, left.id), suppliersOf(graph, right.id)) }
+            : {}),
+          ...(wantCust
+            ? { customers: bucket(customersOf(graph, left.id), customersOf(graph, right.id)) }
+            : {}),
+          edge_coverage: edgeCoverage(companies),
+          caveat:
+            "1-hop documented edges only. Absence from a set is not proof of no commercial relationship. See edge_coverage.",
         },
         attribution: attributionGeneric(),
         links: LINKS,

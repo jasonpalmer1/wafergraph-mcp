@@ -1,7 +1,7 @@
 # wafergraph-mcp — Remote MCP server for wafergraph.com's dataset
 
 Read-only Cloudflare Workers MCP server exposing wafergraph.com's semiconductor & AI
-supply-chain dataset (565 companies, 12 segments, 74 M&A deals, supplier/customer graph) as 30
+supply-chain dataset (hundreds of companies, 12 segments, M&A deals, supplier/customer graph) as 37
 tools for AI agents. No auth (v1, public data). Streamable HTTP transport at `/mcp`, human
 landing page at `/`. Independent project — not an official wafergraph product, but built to be
 a good-faith front door to it (every response links back to wafergraph.com and its paid report).
@@ -10,16 +10,21 @@ Live: **https://mcp.wafergraph.com**
 
 ## File map
 
-- `src/index.ts` — Worker entry point. Routes `GET /` → landing page, `/mcp*` → the MCP agent, else 404.
-- `src/mcp-agent.ts` — `WafergraphMCP extends McpAgent`; registers the first 9 tools inline in `init()`, then delegates to the `src/tools/` modules for tools 10-30.
-- `src/tools/shared.ts` — helpers every tool module shares: `jsonResult`/`errorResult`, compact company refs, `pricedCoverage()` (market cap is only ~72% filled, so every cap aggregate must ship its coverage), `hhi()`, `tallyBy()`, and the `ToolCtx`/`ToolRegistrar` contract.
-- `src/tools/screen.ts` — screening & discovery: `filter_companies`, `list_subsegments`, `get_subsegment`, `find_similar_companies`, `rank_by_market_cap`, `resolve_ticker`.
-- `src/tools/geo.ts` — geography & structure: `list_countries`, `get_country_profile`, `compare_countries`, `get_segment_leaders`, `get_upstream_concentration`. Country is HQ, not fab location; every tool here says so.
-- `src/tools/graphtools.ts` — graph analysis: `find_paths_between`, `simulate_disruption`, `find_single_source_dependencies`, `rank_by_connectivity`, `find_common_suppliers`.
-- `src/tools/deals.ts` — deals & dataset: `get_deal`, `find_deals_by_company`, `get_ma_activity_summary`, `find_consolidation_hotspots`, `get_dataset_stats`.
+- `src/index.ts` — Worker entry point. Routes `GET|HEAD /` → landing page, `/mcp*` → the MCP agent, else 404.
+- `src/version.ts` — `PACKAGE_VERSION` (keep in sync with `package.json` / `server.json`).
+- `src/mcp-agent.ts` — `WafergraphMCP extends McpAgent`; **registration only** — calls `register*Tools` from `src/tools/`.
+- `src/tools/core.ts` — tools 1–9 (search/get company, segments, supply chain, deals, compare, country exposure, chokepoints, portfolio).
+- `src/tools/shared.ts` — `jsonResult` (attaches `freshness.live_cache_age_ms`)/`errorResult`, `companyRef`/`briefRef`, `pricedCoverage`, `hhi`, `tallyBy`, country + deal-party resolvers, `ToolCtx`/`ToolRegistrar`.
+- `src/tools/ctxload.ts` — `loadGraph()` / `loadAll()` (preferred entry for tool handlers; graph is identity-cached).
+- `src/tools/screen.ts` — screening & discovery: `filter_companies`, `list_subsegments`, `get_subsegment`, `find_similar_companies`, `find_substitutes`, `rank_by_market_cap`, `resolve_ticker`.
+- `src/tools/geo.ts` — geography & structure: `list_countries`, `get_country_profile`, `compare_countries`, `get_segment_leaders`, `compare_segments`, `get_upstream_concentration`. Country is HQ, not fab location; every tool here says so.
+- `src/tools/graphtools.ts` — graph analysis: `find_paths_between`, `explain_relationship`, `diff_supply_chains`, `simulate_disruption`, `find_single_source_dependencies`, `rank_by_connectivity`, `find_common_suppliers`, `find_common_customers`.
+- `src/tools/deals.ts` — deals & dataset: `get_deal`, `find_deals_by_company`, `get_ma_activity_summary`, `find_consolidation_hotspots`, `list_stale_companies`, `get_dataset_stats`.
+- `src/tools/meta.ts` — `recommend_tools` (intent → tool routing for agents).
+- `src/ratelimit.ts` — optional KV rate-limit; wired in `src/index.ts` when Worker var `RATE_LIMIT_ENABLED=1`.
 - `scripts/smoke.mjs` — live JSON-RPC smoke test over Streamable HTTP; calls every tool `tools/list` reports and fails if any tool has no case, so a new tool cannot ship untested. `node scripts/smoke.mjs [baseUrl]`.
 - `src/data.ts` — data layer: live-fetch + cache for companies/deals, vendored-snapshot read for taxonomy (hybrid mode — taxonomy.json isn't live-fetchable upstream; see `CLAUDE.local.md` for the full story).
-- `src/graph.ts` — supplier/customer edge graph + `walkChain` (tiered BFS up/down, capped depth 2). Reimplemented cleanly from the *algorithm* in wafergraph's `site/src/data.js` (`buildChain`/`suppliersOf`/`customersOf`) — not imported, per the read-only boundary on that repo.
+- `src/graph.ts` — supplier/customer edge graph + `walkChain` (tiered BFS up/down, capped depth 2) + `resolveCompany` / `byTicker`. Identity-cached `buildGraph`.
 - `src/types.ts` — raw upstream shapes (`Company`, `Taxonomy`, `Deal`) + `AllowedCompany`/`toAllowedCompany()`, the single whitelist point that drops `key_products` (see field-discipline note below).
 - `src/attribution.ts` — fixed `attribution`/`links` blocks attached to every tool response.
 - `src/landing.ts` — the `/` HTML page (install snippets computed from the live request origin).
@@ -84,6 +89,20 @@ Read the counters with `npx wrangler kv key list --binding USAGE_KV --remote` (t
 is required — without it wrangler reads local storage and everything looks empty). Run it from
 this directory, not from `~/projects/wafergraph`: that repo's auto-loaded `.env` sets a narrowly
 scoped `CF_API_TOKEN` that shadows the wrangler OAuth session and fails with auth error 10000.
+
+---
+
+## Audit handoff / Claude pickup
+
+**Deploy is local (Jason’s machine), not this cloud agent.** Start at:
+
+1. **`docs/CLAUDE_SESSION_CHECKLIST.md`** — checkbox runbook for the first laptop session
+2. **`docs/CLAUDE_LOCAL_PICKUP.md`** — paths + deploy commands
+3. **`AUDIT_HANDOFF_FOR_CLAUDE.md`** — what was fixed / what’s left
+4. **`docs/FEATURE_SCAFFOLD.md`** — next features + stubs
+5. **`docs/ready-fixes/`** — apply on laptop into sibling `~/projects/*` repos (no cloud push access)
+
+Sous is out of scope (separate chat).
 
 ---
 

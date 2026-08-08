@@ -55,10 +55,12 @@ function sanitizeClientPart(raw: string | undefined, max: number): string {
  * adoption — and at this server's volume they dominate. Anything self-declaring
  * one of these client names is counted under a `selftest:` prefix instead.
  */
-const SELF_TEST_CLIENTS = /^(smoke|test|probe|dev|curl|debug|healthcheck)/;
+// Exact names only (after sanitize). Prefix matching wrongly classified real
+// clients like "devtools" / "curl-mcp" / "testrail" as self-tests.
+const SELF_TEST_CLIENTS = new Set(["smoke", "test", "probe", "dev", "curl", "debug", "healthcheck"]);
 
 export function isSelfTestClient(name: string | undefined): boolean {
-  return SELF_TEST_CLIENTS.test(sanitizeClientPart(name, 40));
+  return SELF_TEST_CLIENTS.has(sanitizeClientPart(name, 40));
 }
 
 export async function recordUsage(env: Env, tool: string, selfTest = false): Promise<void> {

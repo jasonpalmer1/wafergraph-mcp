@@ -3,17 +3,24 @@
 // does a substring text match, everything here does exact/range filtering,
 // ranking, and structural comparison suited to multi-criteria screens.
 //
-// No new data dependencies: reads the same getCompanies()/getTaxonomy() as
-// the rest of the server. Follows the pattern in mcp-agent.ts and reuses the
-// helpers in ./shared.ts (jsonResult/errorResult/briefRef/pricedCoverage/
-// tallyBy) rather than re-deriving them.
+// No new data dependencies: reads via loadGraph()/loadAll() like the rest of
+// the server. Reuses helpers in ./shared.ts rather than re-deriving them.
 import { z } from "zod";
-import { getCompanies, getTaxonomy, TAXONOMY_SNAPSHOT_DATE } from "../data";
-import { buildGraph, findCompany, suppliersOf, customersOf } from "../graph";
+import { TAXONOMY_SNAPSHOT_DATE } from "../data";
+import { resolveCompany, suppliersOf, customersOf } from "../graph";
+import { loadGraph, loadAll } from "./ctxload";
 import type { Company } from "../types";
 import { attributionForCompany, attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
-import { jsonResult, errorResult, briefRef, pricedCoverage, tallyBy, type ToolRegistrar } from "./shared";
+import {
+  jsonResult,
+  errorResult,
+  briefRef,
+  pricedCoverage,
+  tallyBy,
+  normalizeCountryQuery,
+  type ToolRegistrar,
+} from "./shared";
 
 const MARKET_POSITIONS = ["monopoly", "leader", "major", "challenger", "niche"] as const;
 
@@ -43,7 +50,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
     {
       title: "Filter companies",
       description:
-        "Structured multi-criteria screen over all 565 companies: exact segment/subsegment/country/market_position/" +
+        "Structured multi-criteria screen over the full company dataset: exact segment/subsegment/country/market_position/" +
         "public filters plus a market-cap range, sortable and paginated. Use this instead of search_companies when " +
         "the question is a precise filter ('leader-position analog companies in Japan under $20B') rather than a " +
         "free-text match. Unknown segment/subsegment/country values just return zero results rather than erroring — " +
@@ -70,16 +77,23 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ segment, subsegment, country, market_position, public: isPublic, min_market_cap_usd_b, max_market_cap_usd_b, has_ticker, sort_by, limit, offset }) => {
-      await recordUsage(ctx.env, "filter_companies", ctx.isSelfTest());
-      const companies = await getCompanies();
+      void recordUsage(ctx.env, "filter_companies", ctx.isSelfTest());
+      const { companies } = await loadGraph();
 
       const seg = segment?.trim().toLowerCase();
       const sub = subsegment?.trim().toLowerCase();
-      const ctry = country?.trim().toLowerCase();
+      const ctry = country ? normalizeCountryQuery(country) : undefined;
 
       const scope = companies.filter((c) => {
-        if (seg && !c.segments.some((s) => s.segment.toLowerCase() === seg)) return false;
-        if (sub && !c.segments.some((s) => s.subsegment.toLowerCase() === sub)) return false;
+        // When both segment and subsegment are set, require them on the SAME
+        // membership — otherwise a multi-segment company matching A elsewhere
+        // and B elsewhere falsely passes (e.g. materials + subsystems_components).
+        if (seg && sub) {
+          if (!c.segments.some((s) => s.segment.toLowerCase() === seg && s.subsegment.toLowerCase() === sub)) return false;
+        } else {
+          if (seg && !c.segments.some((s) => s.segment.toLowerCase() === seg)) return false;
+          if (sub && !c.segments.some((s) => s.subsegment.toLowerCase() === sub)) return false;
+        }
         if (ctry && c.country.toLowerCase() !== ctry) return false;
         if (market_position && c.market_position !== market_position) return false;
         if (typeof isPublic === "boolean" && c.public !== isPublic) return false;
@@ -151,8 +165,8 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ segment }) => {
-      await recordUsage(ctx.env, "list_subsegments", ctx.isSelfTest());
-      const [taxonomy, companies] = await Promise.all([getTaxonomy(), getCompanies()]);
+      void recordUsage(ctx.env, "list_subsegments", ctx.isSelfTest());
+      const { taxonomy, companies } = await loadAll();
       const segFilter = segment?.trim().toLowerCase();
 
       const segNameById = new Map(taxonomy.segments.map((s) => [s.id, s.name]));
@@ -250,8 +264,8 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ segment, subsegment, limit, offset }) => {
-      await recordUsage(ctx.env, "get_subsegment", ctx.isSelfTest());
-      const [taxonomy, companies] = await Promise.all([getTaxonomy(), getCompanies()]);
+      void recordUsage(ctx.env, "get_subsegment", ctx.isSelfTest());
+      const { taxonomy, companies } = await loadAll();
       const segId = segment.trim().toLowerCase();
       const subId = subsegment.trim().toLowerCase();
 
@@ -298,21 +312,19 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       title: "Find similar companies",
       description:
         "Nearest structural neighbours to one focal company, ranked by a transparent Jaccard-similarity score — not a " +
-        "market or competitive judgment. Use search_companies or resolve_ticker first if you only have a ticker or an " +
-        "approximate name, then pass the resolved id here.",
+        "market or competitive judgment. Accepts id, name, or ticker.",
       inputSchema: {
-        id: z.string().describe("Focal company id (snake_case, e.g. 'tsmc') or exact name to find neighbours for."),
+        id: z.string().describe("Focal company id, exact name, or ticker to find neighbours for."),
         limit: z.number().int().min(1).max(25).optional().default(10).describe("How many similar companies to return, 1-25. Default 10."),
       },
     },
     async ({ id, limit }) => {
-      await recordUsage(ctx.env, "find_similar_companies", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const graph = buildGraph(companies);
-      const focal = findCompany(graph, id);
+      void recordUsage(ctx.env, "find_similar_companies", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
+      const focal = resolveCompany(graph, id);
       if (!focal) {
         return errorResult(`No company found for "${id}".`, {
-          hint: "Use search_companies or resolve_ticker to find a valid id or name.",
+          hint: "Use search_companies or resolve_ticker to find a valid id, name, or ticker.",
         });
       }
 
@@ -386,10 +398,10 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ limit, segment, country, market_position }) => {
-      await recordUsage(ctx.env, "rank_by_market_cap", ctx.isSelfTest());
-      const companies = await getCompanies();
+      void recordUsage(ctx.env, "rank_by_market_cap", ctx.isSelfTest());
+      const { companies } = await loadGraph();
       const seg = segment?.trim().toLowerCase();
-      const ctry = country?.trim().toLowerCase();
+      const ctry = country ? normalizeCountryQuery(country) : undefined;
 
       const scope = companies.filter((c) => {
         if (seg && !c.segments.some((s) => s.segment.toLowerCase() === seg)) return false;
@@ -404,8 +416,10 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
         });
       }
 
+      // Rank only priced companies — null caps must not fill a "top by market cap" list.
+      const priced = scope.filter((c) => typeof c.market_cap_usd_b === "number");
       const lim = Math.min(Math.max(limit ?? 10, 1), 100);
-      const results = [...scope].sort(byMarketCapDesc).slice(0, lim).map(briefRef);
+      const results = [...priced].sort(byMarketCapDesc).slice(0, lim).map(briefRef);
 
       return jsonResult({
         data: {
@@ -416,8 +430,12 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
           },
           results,
           total: scope.length,
+          priced_in_scope: priced.length,
           returned: results.length,
           coverage: pricedCoverage(scope),
+          note:
+            "Results include only companies with a market_cap_usd_b on file. See coverage for how many in-scope " +
+            "companies are priced vs unpriced.",
         },
         attribution: attributionGeneric(),
         links: LINKS,
@@ -432,8 +450,8 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       title: "Resolve ticker",
       description:
         "Batch-resolve up to 25 strings — tickers, company names, or ids, in any mix — to canonical company refs. " +
-        "Call this FIRST whenever you have raw user input (a ticker list, pasted names) and need valid ids before " +
-        "calling other tools; unresolved entries come back with up to 3 suggested close matches instead of just null.",
+        "This is the only batch resolver (do not invent a second batch_resolve tool). Call FIRST on raw user input " +
+        "before other tools; unresolved entries come back with up to 3 suggested close matches.",
       inputSchema: {
         queries: z
           .array(z.string())
@@ -443,9 +461,8 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ queries }) => {
-      await recordUsage(ctx.env, "resolve_ticker", ctx.isSelfTest());
-      const companies = await getCompanies();
-      const byId = new Map(companies.map((c) => [c.id, c]));
+      void recordUsage(ctx.env, "resolve_ticker", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
 
       const scoreCandidate = (c: Company, qLower: string): number => {
         let s = 0;
@@ -460,7 +477,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
         const q = raw.trim();
         const qLower = q.toLowerCase();
 
-        let match: Company | undefined = byId.get(q);
+        let match: Company | undefined = graph.byId.get(q);
         let match_method: string | null = match ? "exact_id" : null;
 
         if (!match) {
@@ -472,7 +489,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
           if (match) match_method = "case_insensitive_name";
         }
         if (!match) {
-          match = companies.find((c) => c.ticker !== null && c.ticker.toLowerCase() === qLower);
+          match = graph.byTicker.get(q.toUpperCase());
           if (match) match_method = "case_insensitive_ticker";
         }
         if (!match) {
@@ -510,6 +527,100 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
           unmatched_count: results.length - matchedCount,
         },
         attribution: attributionGeneric(),
+        links: LINKS,
+      });
+    },
+  );
+
+  // ---- find_substitutes ---------------------------------------------------
+  // Natural follow-up to find_chokepoints / find_single_source_dependencies:
+  // "who else is in the same niche that an agent could treat as an alternative?"
+  server.registerTool(
+    "find_substitutes",
+    {
+      title: "Find substitute companies",
+      description:
+        "Companies that share at least one segment:subsegment tag with the focal company, ranked by structural " +
+        "overlap (shared tags + similar market_position). Use after find_chokepoints or find_single_source_dependencies " +
+        "when asking 'what else could fill this role?' — this is a taxonomy/position screen, not a commercial " +
+        "interchangeability judgment.",
+      inputSchema: {
+        id: z.string().describe("Focal company id, name, or ticker."),
+        limit: z.number().int().min(1).max(25).optional().default(10).describe("Max substitutes to return (1-25, default 10)."),
+        same_subsegment_only: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe("If true (default), require at least one identical segment:subsegment tag. If false, same parent segment is enough."),
+      },
+    },
+    async ({ id, limit, same_subsegment_only }) => {
+      void recordUsage(ctx.env, "find_substitutes", ctx.isSelfTest());
+      const { companies, graph } = await loadGraph();
+      const focal = resolveCompany(graph, id);
+      if (!focal) {
+        return errorResult(`No company found for "${id}".`, {
+          hint: "Use search_companies or resolve_ticker to find a valid id, name, or ticker.",
+        });
+      }
+
+      const POSITION_RANK: Record<string, number> = {
+        monopoly: 0,
+        leader: 1,
+        major: 2,
+        challenger: 3,
+        niche: 4,
+      };
+      const focalTags = new Set(focal.segments.map((s) => `${s.segment}:${s.subsegment}`));
+      const focalSegs = new Set(focal.segments.map((s) => s.segment));
+      const requireSub = same_subsegment_only !== false;
+
+      const scored = companies
+        .filter((c) => c.id !== focal.id)
+        .map((c) => {
+          const tags = c.segments.map((s) => `${s.segment}:${s.subsegment}`);
+          const shared_subsegments = tags.filter((t) => focalTags.has(t));
+          const shared_segments = c.segments.map((s) => s.segment).filter((s) => focalSegs.has(s));
+          const uniqueSharedSegs = [...new Set(shared_segments)];
+          if (requireSub ? shared_subsegments.length === 0 : uniqueSharedSegs.length === 0) {
+            return null;
+          }
+          const posDelta = Math.abs(
+            (POSITION_RANK[c.market_position] ?? 3) - (POSITION_RANK[focal.market_position] ?? 3),
+          );
+          // Prefer more shared subsegments, then closer market position, then larger cap.
+          const score = shared_subsegments.length * 10 + uniqueSharedSegs.length * 2 - posDelta + (typeof c.market_cap_usd_b === "number" ? 0.001 * c.market_cap_usd_b : 0);
+          return {
+            ...briefRef(c),
+            segments: c.segments,
+            shared_subsegments,
+            shared_segments: uniqueSharedSegs,
+            market_position_delta: posDelta,
+            score: Number(score.toFixed(3)),
+          };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null)
+        .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+
+      const lim = Math.min(Math.max(limit ?? 10, 1), 25);
+      const results = scored.slice(0, lim);
+
+      return jsonResult({
+        data: {
+          focal: { ...briefRef(focal), segments: focal.segments, market_position: focal.market_position },
+          same_subsegment_only: requireSub,
+          results,
+          total: scored.length,
+          returned: results.length,
+          methodology:
+            "Candidates share taxonomy tags with the focal (subsegment by default, or parent segment if " +
+            "same_subsegment_only=false). Ranked by shared_subsegments*10 + shared_segments*2 − |position rank delta| " +
+            "(+ tiny market-cap tiebreak). Not a claim that products are drop-in replacements.",
+          caveat:
+            "Taxonomy overlap ≠ commercial substitutability. A 'leader' and a 'niche' in the same subsegment may not " +
+            "serve the same customers. Cross-check with get_company / get_supply_chain before treating anyone as an alternative.",
+        },
+        attribution: attributionForCompany(focal.id),
         links: LINKS,
       });
     },

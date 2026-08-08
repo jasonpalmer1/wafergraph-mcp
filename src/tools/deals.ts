@@ -1,4 +1,5 @@
-// Deal-focused tools over wafergraph's 74-deal M&A corpus. Follows the same
+// Deal-focused tools over wafergraph's ~74-deal curated corpus (acquisition,
+// investment, capacity, partnership, … — not acquisitions-only). Follows the same
 // pattern as the original 9 tools in mcp-agent.ts (see shared.ts), lifted
 // into its own module so mcp-agent.ts can register it via a single
 // `registerDealTools(server, ctx)` call.
@@ -15,32 +16,23 @@
 //   2. `confidence` is a per-deal quality flag on the record itself. It is
 //      surfaced as-is; nothing here averages it into a derived score.
 import { z } from "zod";
-import { getCompanies, getDeals, getTaxonomy, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE } from "../data";
-import { buildGraph, findCompany, type Graph } from "../graph";
-import type { Company, Deal, DealParty } from "../types";
+import { DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE, cacheAgeMs } from "../data";
+import { resolveCompany } from "../graph";
+import type { Company, Deal } from "../types";
 import { attributionGeneric, LINKS } from "../attribution";
 import { recordUsage } from "../usage";
-import { jsonResult, errorResult, companyRef, briefRef, tallyBy, type ToolRegistrar } from "./shared";
+import {
+  jsonResult,
+  errorResult,
+  companyRef,
+  briefRef,
+  tallyBy,
+  resolvePartyCompany,
+  type ToolRegistrar,
+} from "./shared";
+import { loadAll } from "./ctxload";
 
 // ---- shared helpers --------------------------------------------------
-
-// Resolve one deal party to a dataset company: id match first, then
-// case-insensitive exact name match. Returns the match method so callers can
-// tell a strong (id) match from a weaker (name-only) one.
-function resolvePartyCompany(
-  companies: Company[],
-  graph: Graph,
-  party: DealParty,
-): { company: Company | null; method: "id" | "name" | null } {
-  if (party.id) {
-    const byId = graph.byId.get(party.id);
-    if (byId) return { company: byId, method: "id" };
-  }
-  const needle = party.name.trim().toLowerCase();
-  const byName = companies.find((c) => c.name.trim().toLowerCase() === needle);
-  if (byName) return { company: byName, method: "name" };
-  return { company: null, method: null };
-}
 
 function nonEmpty(v: unknown): boolean {
   if (v === null || v === undefined) return false;
@@ -93,13 +85,12 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
         "resolved company refs where a dataset id exists (and the raw party name where it does not), summary, " +
         "sources, and the per-deal confidence flag. Use get_deals or find_deals_by_company to find a deal id first.",
       inputSchema: {
-        id: z.string().describe("Deal id as returned by get_deals/find_deals_by_company, e.g. 'amd_xilinx_2020'."),
+        id: z.string().describe("Deal id as returned by get_deals/find_deals_by_company, e.g. 'amd_xilinx'."),
       },
     },
     async ({ id }) => {
-      await recordUsage(ctx.env, "get_deal", ctx.isSelfTest());
-      const [deals, companies] = await Promise.all([getDeals(), getCompanies()]);
-      const graph = buildGraph(companies);
+      void recordUsage(ctx.env, "get_deal", ctx.isSelfTest());
+      const { deals, graph } = await loadAll();
 
       const needle = id.trim().toLowerCase();
       const deal = deals.find((d) => d.id === id) ?? deals.find((d) => d.id.toLowerCase() === needle);
@@ -159,13 +150,10 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ company }) => {
-      await recordUsage(ctx.env, "find_deals_by_company", ctx.isSelfTest());
-      const [companies, deals] = await Promise.all([getCompanies(), getDeals()]);
-      const graph = buildGraph(companies);
+      void recordUsage(ctx.env, "find_deals_by_company", ctx.isSelfTest());
+      const { companies, deals, graph } = await loadAll();
 
-      const byTicker = new Map<string, Company>();
-      for (const c of companies) if (c.ticker) byTicker.set(c.ticker.toUpperCase(), c);
-      const resolved = findCompany(graph, company) ?? byTicker.get(company.trim().toUpperCase()) ?? null;
+      const resolved = resolveCompany(graph, company) ?? null;
       const targetId = resolved?.id ?? null;
       const targetName = (resolved?.name ?? company).trim().toLowerCase();
 
@@ -242,7 +230,7 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
     {
       title: "Get M&A activity summary",
       description:
-        "Aggregate view of the full 74-deal M&A corpus: counts by year (from announced date), by deal type, and by " +
+        "Aggregate view of the full ~74-deal curated corpus: counts by year (from announced date), by deal type, and by " +
         "status; total and median disclosed value; and the largest deals by value. Value figures are computed only " +
         "over the subset of deals with a disclosed value_usd and are never extrapolated to cover the undisclosed ones.",
       inputSchema: {
@@ -250,8 +238,8 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ top_n }) => {
-      await recordUsage(ctx.env, "get_ma_activity_summary", ctx.isSelfTest());
-      const deals = await getDeals();
+      void recordUsage(ctx.env, "get_ma_activity_summary", ctx.isSelfTest());
+      const { deals } = await loadAll();
 
       const by_year = tallyBy(deals, (d) => (d.announced ? d.announced.slice(0, 4) : "unknown"));
       const by_type = tallyBy(deals, (d) => d.type);
@@ -319,9 +307,8 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
       },
     },
     async ({ limit, sort_by }) => {
-      await recordUsage(ctx.env, "find_consolidation_hotspots", ctx.isSelfTest());
-      const [companies, deals, taxonomy] = await Promise.all([getCompanies(), getDeals(), getTaxonomy()]);
-      const graph = buildGraph(companies);
+      void recordUsage(ctx.env, "find_consolidation_hotspots", ctx.isSelfTest());
+      const { companies, deals, taxonomy, graph } = await loadAll();
       const segNames = new Map(taxonomy.segments.map((s) => [s.id, s.name]));
 
       const segStats = new Map<string, { deal_count: number; disclosed_value_usd: number; deals_with_value: number }>();
@@ -382,7 +369,92 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
     },
   );
 
-  // ---- 5. get_dataset_stats ----------------------------------------------
+  // ---- 5. list_stale_companies -------------------------------------------
+  // Concrete follow-up to get_dataset_stats' last_verified summary: which
+  // company rows are oldest relative to the newest verification in the set.
+  server.registerTool(
+    "list_stale_companies",
+    {
+      title: "List stale companies",
+      description:
+        "Companies with the oldest last_verified dates in the dataset (optionally filtered by segment), ranked " +
+        "oldest-first. Use after get_dataset_stats when you need the actual rows behind the staleness summary — " +
+        "this is relative to the newest last_verified in the corpus, not wall-clock today.",
+      inputSchema: {
+        segment: z.string().optional().describe("Optional taxonomy segment id to restrict the scope (see get_segments)."),
+        limit: z.number().int().min(1).max(50).optional().default(20).describe("Max companies to return, 1-50. Default 20."),
+        older_than_days_vs_newest: z
+          .number()
+          .int()
+          .min(1)
+          .max(3650)
+          .optional()
+          .describe(
+            "If set, only include companies whose last_verified is at least this many days older than the newest " +
+              "last_verified in the (scoped) dataset. Omit to return the oldest N regardless.",
+          ),
+      },
+    },
+    async ({ segment, limit, older_than_days_vs_newest }) => {
+      void recordUsage(ctx.env, "list_stale_companies", ctx.isSelfTest());
+      const { companies } = await loadAll();
+      const seg = segment?.trim().toLowerCase();
+      const scope = seg ? companies.filter((c) => c.segments.some((s) => s.segment.toLowerCase() === seg)) : companies;
+      if (seg && scope.length === 0) {
+        return errorResult(`No companies found in segment "${segment}".`, {
+          hint: "Use get_segments for valid segment ids.",
+        });
+      }
+
+      const withDates = scope
+        .filter((c) => !!c.last_verified)
+        .slice()
+        .sort(
+          (a, b) =>
+            a.last_verified.localeCompare(b.last_verified) || a.name.localeCompare(b.name),
+        );
+      const newest = withDates.length ? withDates[withDates.length - 1]!.last_verified : null;
+      const oldest = withDates.length ? withDates[0]!.last_verified : null;
+
+      let filtered = withDates;
+      if (newest && older_than_days_vs_newest != null) {
+        const cutoffMs = new Date(newest).getTime() - older_than_days_vs_newest * 24 * 60 * 60 * 1000;
+        filtered = withDates.filter((c) => new Date(c.last_verified).getTime() < cutoffMs);
+      }
+
+      const lim = Math.min(Math.max(limit ?? 20, 1), 50);
+      const results = filtered.slice(0, lim).map((c) => ({
+        ...briefRef(c),
+        last_verified: c.last_verified,
+        days_behind_newest:
+          newest != null
+            ? Math.max(
+                0,
+                Math.floor((new Date(newest).getTime() - new Date(c.last_verified).getTime()) / (24 * 60 * 60 * 1000)),
+              )
+            : null,
+      }));
+
+      return jsonResult({
+        data: {
+          scope: seg ? `segment: ${segment}` : "all companies",
+          newest_last_verified_in_scope: newest,
+          oldest_last_verified_in_scope: oldest,
+          matching_total: filtered.length,
+          returned: results.length,
+          results,
+          note:
+            "Staleness is relative to newest_last_verified_in_scope in this dataset, not wall-clock today. " +
+            "A large days_behind_newest means the row is older than peer rows wafergraph has refreshed — not that " +
+            "the company is inactive.",
+        },
+        attribution: attributionGeneric(),
+        links: LINKS,
+      });
+    },
+  );
+
+  // ---- 6. get_dataset_stats ----------------------------------------------
   server.registerTool(
     "get_dataset_stats",
     {
@@ -391,13 +463,13 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
         "The honesty tool: what this dataset actually contains and where it is thin. Live-computed per-field " +
         "coverage for companies and deals, last_verified staleness distribution, supply-chain edge coverage, data " +
         "source mode, and a plain-words list of known limitations. Call this before treating an absence of a " +
-        "company, deal, or edge as evidence it doesn't exist in the real market.",
+        "company, deal, or edge as evidence it doesn't exist in the real market. For the actual oldest rows, " +
+        "follow up with list_stale_companies.",
       inputSchema: {},
     },
     async () => {
-      await recordUsage(ctx.env, "get_dataset_stats", ctx.isSelfTest());
-      const [companies, deals, taxonomy] = await Promise.all([getCompanies(), getDeals(), getTaxonomy()]);
-      const graph = buildGraph(companies);
+      void recordUsage(ctx.env, "get_dataset_stats", ctx.isSelfTest());
+      const { companies, deals, taxonomy, graph } = await loadAll();
       const countries = new Set(companies.map((c) => c.country)).size;
 
       const company_field_coverage = coverage<Company>(companies, [
@@ -498,6 +570,11 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
           },
           data_source_mode: DATA_SOURCE_MODE,
           taxonomy_snapshot_date: TAXONOMY_SNAPSHOT_DATE,
+          live_cache_age_ms: cacheAgeMs(),
+          live_cache_note:
+            "live_cache_age_ms is the age of the oldest in-isolate companies/deals cache entry (null = cold isolate, " +
+            "not yet fetched). On upstream fetch failure the server may serve a stale cache entry rather than fail " +
+            "every tool — check this age if results look outdated.",
           known_limitations,
         },
         attribution: attributionGeneric(),
