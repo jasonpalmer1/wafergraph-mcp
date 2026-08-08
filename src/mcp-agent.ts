@@ -4,6 +4,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { DATA_SOURCE_MODE } from "./data";
+import { PACKAGE_VERSION } from "./version";
 import { recordSessionStart, isSelfTestClient } from "./usage";
 import type { ToolCtx } from "./tools/shared";
 import { registerCoreTools } from "./tools/core";
@@ -16,7 +17,7 @@ import { registerMetaTools } from "./tools/meta";
 type State = Record<string, never>;
 
 export class WafergraphMCP extends McpAgent<Env, State, {}> {
-  server = new McpServer({ name: "wafergraph-mcp", version: "1.3.4" });
+  server = new McpServer({ name: "wafergraph-mcp", version: PACKAGE_VERSION });
   initialState: State = {};
 
   // Set once per session from the initialize handshake, then applied to every

@@ -8,6 +8,7 @@
 import { WafergraphMCP } from "./mcp-agent";
 import { renderLanding } from "./landing";
 import { checkRateLimit } from "./ratelimit";
+import { PACKAGE_VERSION } from "./version";
 
 // Re-export so wrangler.jsonc's durable_objects binding (class_name:
 // "WafergraphMCP") can resolve it from this Worker's main module.
@@ -63,7 +64,8 @@ export default {
 
     // Lightweight health for uptime monitors (no DO / no data fetch).
     if (url.pathname === "/health" && (request.method === "GET" || request.method === "HEAD")) {
-      return new Response(request.method === "HEAD" ? null : JSON.stringify({ ok: true, service: "wafergraph-mcp" }), {
+      const body = JSON.stringify({ ok: true, service: "wafergraph-mcp", version: PACKAGE_VERSION });
+      return new Response(request.method === "HEAD" ? null : body, {
         headers: { "content-type": "application/json; charset=utf-8" },
       });
     }

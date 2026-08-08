@@ -686,7 +686,15 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
             : {}),
           ...(unresolved.length ? { unresolved } : {}),
           input_companies_with_no_documented_suppliers: noSuppliers.length,
-          input_companies_with_no_documented_suppliers_list: noSuppliers.map((c) => companyRef(graph, c.id)),
+          input_companies_with_no_documented_suppliers_list: noSuppliers
+            .slice(0, INPUT_CAP)
+            .map((c) => companyRef(graph, c.id)),
+          ...(noSuppliers.length > INPUT_CAP
+            ? {
+                input_companies_with_no_documented_suppliers_list_truncated: true,
+                note_no_suppliers_list: `List capped at ${INPUT_CAP}; see input_companies_with_no_documented_suppliers for the full count.`,
+              }
+            : {}),
           results: sliced,
           total: results.length,
           returned: sliced.length,
@@ -789,8 +797,19 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       const bSup = new Set(suppliersOf(graph, b.id));
       const aCust = new Set(customersOf(graph, a.id));
       const bCust = new Set(customersOf(graph, b.id));
-      const shared_suppliers = [...aSup].filter((id) => bSup.has(id)).map((id) => companyRef(graph, id));
-      const shared_customers = [...aCust].filter((id) => bCust.has(id)).map((id) => companyRef(graph, id));
+      const SHARED_CAP = 25;
+      const byCap = (ids: string[]) =>
+        ids
+          .slice()
+          .sort(
+            (x, y) =>
+              (graph.byId.get(y)?.market_cap_usd_b ?? -1) - (graph.byId.get(x)?.market_cap_usd_b ?? -1) ||
+              (graph.byId.get(x)?.name ?? "").localeCompare(graph.byId.get(y)?.name ?? ""),
+          );
+      const sharedSupIds = byCap([...aSup].filter((id) => bSup.has(id)));
+      const sharedCustIds = byCap([...aCust].filter((id) => bCust.has(id)));
+      const shared_suppliers = sharedSupIds.slice(0, SHARED_CAP).map((id) => companyRef(graph, id));
+      const shared_customers = sharedCustIds.slice(0, SHARED_CAP).map((id) => companyRef(graph, id));
       const direct =
         aCust.has(b.id) || aSup.has(b.id)
           ? {
@@ -808,16 +827,18 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
           path_count: paths.length,
           shared_suppliers,
           shared_customers,
-          shared_supplier_count: shared_suppliers.length,
-          shared_customer_count: shared_customers.length,
+          shared_supplier_count: sharedSupIds.length,
+          shared_customer_count: sharedCustIds.length,
+          shared_lists_capped_at: SHARED_CAP,
           max_depth: depth,
           summary:
             paths.length === 0 && !direct.a_supplies_b && !direct.a_depends_on_b
-              ? `No documented path within ${depth} hops between ${a.name} and ${b.name}; they share ${shared_suppliers.length} supplier(s) and ${shared_customers.length} customer(s).`
-              : `${a.name} ↔ ${b.name}: ${paths.length} path(s) within ${depth} hops; ${shared_suppliers.length} shared supplier(s); ${shared_customers.length} shared customer(s).`,
+              ? `No documented path within ${depth} hops between ${a.name} and ${b.name}; they share ${sharedSupIds.length} supplier(s) and ${sharedCustIds.length} customer(s).`
+              : `${a.name} ↔ ${b.name}: ${paths.length} path(s) within ${depth} hops; ${sharedSupIds.length} shared supplier(s); ${sharedCustIds.length} shared customer(s).`,
           edge_coverage: edgeCoverage(companies),
           caveat:
-            "Documented edges only — absence of a path is not proof of no commercial relationship. See edge_coverage.",
+            "Documented edges only — absence of a path is not proof of no commercial relationship. See edge_coverage. " +
+            "Shared supplier/customer lists are capped; counts are uncapped.",
         },
         attribution: attributionGeneric(),
         links: LINKS,

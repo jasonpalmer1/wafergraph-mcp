@@ -11,6 +11,7 @@ Live: **https://mcp.wafergraph.com**
 ## File map
 
 - `src/index.ts` — Worker entry point. Routes `GET|HEAD /` → landing page, `/mcp*` → the MCP agent, else 404.
+- `src/version.ts` — `PACKAGE_VERSION` (keep in sync with `package.json` / `server.json`).
 - `src/mcp-agent.ts` — `WafergraphMCP extends McpAgent`; **registration only** — calls `register*Tools` from `src/tools/`.
 - `src/tools/core.ts` — tools 1–9 (search/get company, segments, supply chain, deals, compare, country exposure, chokepoints, portfolio).
 - `src/tools/shared.ts` — `jsonResult` (attaches `freshness.live_cache_age_ms`)/`errorResult`, `companyRef`/`briefRef`, `pricedCoverage`, `hhi`, `tallyBy`, country + deal-party resolvers, `ToolCtx`/`ToolRegistrar`.
