@@ -9,7 +9,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
-import { getCompanies, getTaxonomy, getDeals, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE } from "./data";
+import { getCompanies, getTaxonomy, getDeals, getCompanyCountLabel, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE } from "./data";
 import { buildGraph, findCompany, suppliersOf, customersOf, walkChain, type Graph } from "./graph";
 import { toAllowedCompany } from "./types";
 import { attributionForCompany, attributionGeneric, companyUrl, LINKS } from "./attribution";
@@ -67,13 +67,21 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
       void recordSessionStart(this.env, info?.name, info?.version);
     };
 
+    // Live company count for tool descriptions below (and in the tools/
+    // modules registered at the end of this function), replacing a
+    // point-in-time hardcoded "565" that silently goes stale as the
+    // upstream dataset grows. Descriptions are fixed at registration time
+    // (tools/list can't recompute them per call), so this is computed once
+    // per session, here, before any registerTool() call.
+    const companyCountLabel = await getCompanyCountLabel();
+
     // ---- 1. search_companies -------------------------------------------
     this.server.registerTool(
       "search_companies",
       {
         title: "Search companies",
         description:
-          "Search wafergraph's semiconductor & AI supply-chain company dataset (565 companies across 12 segments) by " +
+          `Search wafergraph's semiconductor & AI supply-chain company dataset (${companyCountLabel} companies across 12 segments) by ` +
           "name/one_liner substring and/or segment and/or country. Returns a compact list capped at 25 with a total match count. " +
           "Use get_segments first if you don't know valid segment ids.",
         inputSchema: {
@@ -376,6 +384,24 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         const intersect = (sets: Set<string>[]) =>
           [...(sets[0] ?? [])].filter((id) => sets.every((s) => s.has(id))).map((id) => companyRef(graph, id));
 
+        // Per-company "unique" counterparties — the ones only THIS compared
+        // company documents, none of the others. The description promises
+        // "shared and unique supply-chain counterparties"; this is the unique
+        // half (shared_suppliers/shared_customers above were already there).
+        const uniqueFor = (sets: Set<string>[], idx: number) => {
+          const mine = sets[idx];
+          const others = sets.filter((_, i) => i !== idx);
+          return [...mine].filter((id) => !others.some((s) => s.has(id))).map((id) => companyRef(graph, id));
+        };
+        const unique_suppliers = resolved.map(({ company: c }, idx) => ({
+          company_id: c.id,
+          suppliers: uniqueFor(supplierSets, idx),
+        }));
+        const unique_customers = resolved.map(({ company: c }, idx) => ({
+          company_id: c.id,
+          customers: uniqueFor(customerSets, idx),
+        }));
+
         const priced = rows.filter((r) => r.market_cap_usd_b !== null).length;
 
         return jsonResult({
@@ -383,8 +409,14 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
             companies: rows,
             shared_suppliers: intersect(supplierSets),
             shared_customers: intersect(customerSets),
+            unique_suppliers,
+            unique_customers,
             ...(unresolved.length ? { unresolved } : {}),
             market_cap_coverage: `${priced}/${rows.length} compared companies have a market cap on file`,
+            methodology:
+              "shared_suppliers/shared_customers: counterparties documented for EVERY compared company. " +
+              "unique_suppliers/unique_customers: per compared company, the counterparties documented for THAT " +
+              "company and none of the others in this comparison.",
           },
           attribution: attributionGeneric(),
           links: LINKS,
@@ -400,7 +432,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         description:
           "Geographic concentration of the supply chain: which countries host the companies in a given segment (or " +
           "across all 12 segments), ranked by company count. Answers 'how concentrated in Taiwan is advanced " +
-          "lithography' style questions. Country is recorded for all 565 companies.",
+          `lithography' style questions. Country is recorded for all ${companyCountLabel} companies.`,
         inputSchema: {
           segment: z
             .string()
@@ -571,7 +603,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
         if (matched.length === 0) {
           return errorResult("None of the supplied holdings matched a company in the dataset.", {
             unmatched,
-            hint: "wafergraph covers 565 semiconductor & AI supply-chain companies. Use search_companies to check coverage.",
+            hint: `wafergraph covers ${companyCountLabel} semiconductor & AI supply-chain companies. Use search_companies to check coverage.`,
           });
         }
 
@@ -618,7 +650,7 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
     // registers its own tools against the same server and shares the helpers
     // in src/tools/shared.ts. ctx.isSelfTest is read at call time because the
     // flag is set by the initialize handshake, after registration runs.
-    const ctx: ToolCtx = { env: this.env, isSelfTest: () => this.selfTest };
+    const ctx: ToolCtx = { env: this.env, isSelfTest: () => this.selfTest, companyCountLabel };
     registerScreenTools(this.server, ctx);
     registerGeoTools(this.server, ctx);
     registerGraphTools(this.server, ctx);

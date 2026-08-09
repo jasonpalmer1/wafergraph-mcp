@@ -1,7 +1,10 @@
 // Human landing page at "/". One screen: what this is, how to install it,
 // and a link back to wafergraph.com. `origin` is the live request origin so
-// the install snippets always show the real deployed URL.
-export function renderLanding(origin: string): string {
+// the install snippets always show the real deployed URL. `companyCountLabel`
+// is a live company count (or a "600+" fallback if a live count couldn't be
+// had — see getCompanyCountLabel in src/data.ts) so this page doesn't quietly
+// keep claiming a point-in-time number (565) as the dataset grows.
+export function renderLanding(origin: string, companyCountLabel: string): string {
   const mcpUrl = `${origin}/mcp`;
   return `<!doctype html>
 <html lang="en">
@@ -9,7 +12,7 @@ export function renderLanding(origin: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>wafergraph MCP — semiconductor supply-chain data for AI agents</title>
-<meta name="description" content="Remote MCP server exposing wafergraph.com's semiconductor & AI supply-chain dataset: 565 companies, 12 segments, 74 M&A deals, and the supplier/customer graph.">
+<meta name="description" content="Remote MCP server exposing wafergraph.com's semiconductor & AI supply-chain dataset: ${companyCountLabel} companies, 12 segments, 74 M&A deals, and the supplier/customer graph.">
 <style>
   :root {
     --bg: #0b0e14;
@@ -134,7 +137,7 @@ export function renderLanding(origin: string): string {
   <p class="eyebrow">Remote MCP server</p>
   <h1>wafergraph MCP</h1>
   <p class="lede">
-    Read-only access to wafergraph.com's semiconductor &amp; AI supply-chain dataset — 565 companies across
+    Read-only access to wafergraph.com's semiconductor &amp; AI supply-chain dataset — ${companyCountLabel} companies across
     12 segments, the supplier/customer graph, and a 74-deal M&amp;A corpus — as 30 tools any MCP-speaking
     AI agent can call directly.
   </p>

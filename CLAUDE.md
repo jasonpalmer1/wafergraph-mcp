@@ -87,5 +87,39 @@ scoped `CF_API_TOKEN` that shadows the wrangler OAuth session and fails with aut
 
 ---
 
+## Correctness/availability hardening (2026-08-08)
+
+A bug-audit pass fixed six HIGH-severity correctness/availability issues, all in `src/`:
+
+- **`src/data.ts` safe caching**: the Cloudflare `cf` fetch option changed from
+  `cacheEverything: true` (caches ANY status at the edge for the full TTL, including transient
+  5xx/redirects) to `cacheTtlByStatus` scoped to 2xx only. `getCompanies()`/`getDeals()` now
+  catch a failed live refetch and serve the stale in-memory cache if one exists (instead of
+  failing the whole tool call) rather than throwing outright; a `companies_stale`/`deals_stale`
+  flag (new `dataFreshness()`, surfaced in `get_dataset_stats`'s `data_freshness` field) marks
+  when that happened instead of silently pretending the data is current.
+- **`find_paths_between`** (`src/tools/graphtools.ts`): the path search was DFS-then-sort, which
+  could exhaust the result cap on long paths down one branch before ever reaching a shorter path
+  down another — sorting after the fact doesn't recover paths the cap already dropped. Rewritten
+  as BFS over partial paths, one hop-depth at a time, so the cap is always hit with the shortest
+  paths already collected first.
+- **`simulate_disruption`**'s `company_id` resolution now goes through the same
+  `resolveCompany()` (id/name/ticker) helper `find_paths_between` uses, instead of
+  `findCompany()` alone — a ticker like `"TSM"` used to silently miss here.
+- **Rate limiting** (`src/index.ts`): a dependency-free per-IP sliding window (~60 req/min,
+  429 on excess) now guards `/mcp`. It's isolate-local, not distributed — the code comments and
+  this note both say Cloudflare's WAF / Rate Limiting Rules are still the right place for real
+  edge-level abuse protection; this is a floor, not a replacement.
+- **Hardcoded `565`** company count replaced with a live count computed from the loaded
+  dataset (`getCompanyCountLabel()` in `src/data.ts`, falling back to `"600+"` only if a live
+  count truly can't be had) in the landing page and in every tool description that used to quote
+  the old fixed number (`search_companies`, `get_country_exposure`, `analyze_portfolio_exposure`,
+  `filter_companies`, `list_countries`). `ToolCtx` (`src/tools/shared.ts`) gained a
+  `companyCountLabel` field so the `src/tools/` modules can use it too.
+- **`compare_companies`**: its description already promised "shared and unique supply-chain
+  counterparties" but only ever returned the shared half. Added `unique_suppliers`/
+  `unique_customers` (per compared company, counterparties documented for that company and none
+  of the others) so the response matches the description.
+
 Local build history, decisions, and session notes live in `CLAUDE.local.md` (gitignored, not
 part of this public repo).

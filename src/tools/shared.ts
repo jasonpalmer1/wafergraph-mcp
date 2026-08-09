@@ -14,6 +14,13 @@ export interface ToolCtx {
   // Read at call time, not registration time: the flag is set from the
   // initialize handshake, which happens after tools are registered.
   isSelfTest: () => boolean;
+  // Live company count (or a "600+" fallback — see getCompanyCountLabel in
+  // src/data.ts), computed once per session in mcp-agent.ts's init() before
+  // any tool is registered. Tool descriptions are fixed at registration
+  // time (tools/list can't re-run per call), so this is as "live" as a
+  // description string can get — use it instead of a hardcoded company
+  // count like the stale "565" this replaced.
+  companyCountLabel: string;
 }
 
 export type ToolRegistrar = (server: McpServer, ctx: ToolCtx) => void;

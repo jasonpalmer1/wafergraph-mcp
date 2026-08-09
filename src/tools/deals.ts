@@ -15,7 +15,7 @@
 //   2. `confidence` is a per-deal quality flag on the record itself. It is
 //      surfaced as-is; nothing here averages it into a derived score.
 import { z } from "zod";
-import { getCompanies, getDeals, getTaxonomy, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE } from "../data";
+import { getCompanies, getDeals, getTaxonomy, dataFreshness, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE } from "../data";
 import { buildGraph, findCompany, type Graph } from "../graph";
 import type { Company, Deal, DealParty } from "../types";
 import { attributionGeneric, LINKS } from "../attribution";
@@ -498,6 +498,14 @@ export const registerDealTools: ToolRegistrar = (server, ctx) => {
           },
           data_source_mode: DATA_SOURCE_MODE,
           taxonomy_snapshot_date: TAXONOMY_SNAPSHOT_DATE,
+          data_freshness: {
+            ...dataFreshness(),
+            note:
+              "companies_stale/deals_stale = true means the live refetch from wafergraph.com failed after the " +
+              "6h in-isolate cache expired, and this response is serving the last successfully fetched copy instead " +
+              "of failing outright. cache_age_ms is the age of the oldest currently-cached dataset (null if nothing " +
+              "has been fetched yet in this isolate).",
+          },
           known_limitations,
         },
         attribution: attributionGeneric(),

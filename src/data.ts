@@ -50,13 +50,29 @@ interface CacheEntry<T> {
 let companiesCache: CacheEntry<Company[]> | null = null;
 let dealsCache: CacheEntry<Deal[]> | null = null;
 
+// Set to true whenever a request is served from a TTL-expired in-memory
+// cache because the live refetch failed (upstream down/network error/bad
+// payload). Cleared back to false the next time a live fetch succeeds.
+// Surfaced via dataFreshness() (see get_dataset_stats) so a degraded-but-
+// still-answering server is visible to callers instead of silently
+// pretending the data is current.
+let companiesStale = false;
+let dealsStale = false;
+
 function isFresh<T>(entry: CacheEntry<T> | null): entry is CacheEntry<T> {
   return entry !== null && Date.now() - entry.fetchedAt < TTL_MS;
 }
 
 async function fetchJSON<T>(filename: string): Promise<T> {
   const res = await fetch(`${SOURCE_BASE}/${filename}`, {
-    cf: { cacheTtl: EDGE_CACHE_TTL_SECONDS, cacheEverything: true },
+    cf: {
+      // Only cache genuine 200 JSON responses at the edge. Blindly caching
+      // "everything" (the previous cacheEverything:true) would also cache a
+      // transient 5xx/redirect from upstream for the full TTL, turning one
+      // bad response into hours of bad responses for every isolate that hit
+      // that PoP. Non-2xx responses get cacheTtl 0 (don't cache).
+      cacheTtlByStatus: { "200-299": EDGE_CACHE_TTL_SECONDS, "300-599": 0 },
+    },
   });
   if (!res.ok) {
     throw new Error(`wafergraph upstream fetch failed for ${filename}: ${res.status} ${res.statusText}`);
@@ -68,21 +84,67 @@ async function fetchJSON<T>(filename: string): Promise<T> {
     // SPA shell), fail loudly instead of returning HTML as "data".
     throw new Error(`wafergraph upstream returned non-JSON content-type "${contentType}" for ${filename}`);
   }
-  return res.json();
+  // Parse (and let a malformed body throw) before this response is trusted
+  // enough to become the new in-memory cache entry.
+  return (await res.json()) as T;
 }
 
 export async function getCompanies(): Promise<Company[]> {
   if (isFresh(companiesCache)) return companiesCache.data;
-  const data = await fetchJSON<Company[]>("companies.json");
-  companiesCache = { data, fetchedAt: Date.now() };
-  return data;
+  try {
+    const data = await fetchJSON<Company[]>("companies.json");
+    companiesCache = { data, fetchedAt: Date.now() };
+    companiesStale = false;
+    return data;
+  } catch (err) {
+    // TTL expired (or no cache yet) and the live refetch failed. Prefer a
+    // known-stale answer over a hard failure when we have one to give.
+    if (companiesCache) {
+      companiesStale = true;
+      console.error(`getCompanies: live refetch failed, serving stale cache (age ${Date.now() - companiesCache.fetchedAt}ms):`, err);
+      return companiesCache.data;
+    }
+    throw err;
+  }
 }
 
 export async function getDeals(): Promise<Deal[]> {
   if (isFresh(dealsCache)) return dealsCache.data;
-  const data = await fetchJSON<Deal[]>("deals.json");
-  dealsCache = { data, fetchedAt: Date.now() };
-  return data;
+  try {
+    const data = await fetchJSON<Deal[]>("deals.json");
+    dealsCache = { data, fetchedAt: Date.now() };
+    dealsStale = false;
+    return data;
+  } catch (err) {
+    if (dealsCache) {
+      dealsStale = true;
+      console.error(`getDeals: live refetch failed, serving stale cache (age ${Date.now() - dealsCache.fetchedAt}ms):`, err);
+      return dealsCache.data;
+    }
+    throw err;
+  }
+}
+
+// Live cache-health snapshot: whether the last-served companies/deals came
+// from a TTL-expired cache kept alive by a failed refetch (see getCompanies/
+// getDeals above), plus the age of the oldest cached dataset. Read this
+// rather than assuming a 200 response means fresh upstream data.
+export function dataFreshness(): { companies_stale: boolean; deals_stale: boolean; cache_age_ms: number | null } {
+  return { companies_stale: companiesStale, deals_stale: dealsStale, cache_age_ms: cacheAgeMs() };
+}
+
+// Best-effort live company count for descriptions/landing copy that used to
+// hardcode a point-in-time number (565) which silently goes stale as the
+// upstream dataset grows. Falls back to a conservative "600+" label if a
+// live count truly can't be had (no cache yet and the fetch also failed),
+// so a description never blocks tool registration or a landing-page render.
+export async function getCompanyCountLabel(): Promise<string> {
+  try {
+    const companies = await getCompanies();
+    return String(companies.length);
+  } catch {
+    return "600+";
+  }
 }
 
 // Vendored snapshot — not fetched, no cache needed (bundled at deploy time).

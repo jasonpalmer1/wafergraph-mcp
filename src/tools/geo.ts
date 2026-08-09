@@ -1,6 +1,7 @@
 // Geography tools: everything answerable from `Company.country` (a single
-// headquarters-country string per company, filled on 100% of the 565
-// records) plus the segment/position/graph fields it can be crossed with.
+// headquarters-country string per company, filled on 100% of records — see
+// get_dataset_stats for the live company count) plus the segment/position/
+// graph fields it can be crossed with.
 //
 // HARD CAVEAT, repeated in every tool's description AND every response
 // payload below: `country` is HEADQUARTERS country, not a manufacturing-
@@ -103,7 +104,7 @@ export const registerGeoTools: ToolRegistrar = (server, ctx) => {
     {
       title: "List countries",
       description:
-        "Every country in wafergraph's semiconductor & AI supply-chain dataset (29 countries across 565 companies) " +
+        `Every country in wafergraph's semiconductor & AI supply-chain dataset (29 countries across ${ctx.companyCountLabel} companies) ` +
         "with company count, which segments are present there (with counts), public/private split, and priced " +
         "market-cap totals. Sorted by company count descending. Optional segment filter. " +
         HQ_CAVEAT,

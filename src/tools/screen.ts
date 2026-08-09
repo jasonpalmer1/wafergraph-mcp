@@ -43,7 +43,7 @@ export const registerScreenTools: ToolRegistrar = (server, ctx) => {
     {
       title: "Filter companies",
       description:
-        "Structured multi-criteria screen over all 565 companies: exact segment/subsegment/country/market_position/" +
+        `Structured multi-criteria screen over all ${ctx.companyCountLabel} companies: exact segment/subsegment/country/market_position/` +
         "public filters plus a market-cap range, sortable and paginated. Use this instead of search_companies when " +
         "the question is a precise filter ('leader-position analog companies in Japan under $20B') rather than a " +
         "free-text match. Unknown segment/subsegment/country values just return zero results rather than erroring — " +

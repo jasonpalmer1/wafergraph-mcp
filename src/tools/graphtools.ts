@@ -143,33 +143,46 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       const cap = limit ?? 10;
       const EXPLORATION_BUDGET = 20000;
 
+      // BFS over partial paths, one hop-depth at a time, instead of DFS. This
+      // guarantees results are discovered shortest-hop-count first — a DFS
+      // (even a correct one) can exhaust the cap/budget on a handful of long
+      // paths down one branch before ever reaching a short path down another,
+      // which then requires an after-the-fact sort to "fix" — but by that
+      // point shorter paths may already have been dropped by the cap. BFS
+      // explores every depth-1 path, then every depth-2 path, etc., so
+      // hitting the cap always means "cap reached with the shortest paths
+      // available first," never "cap reached on an arbitrary DFS order."
       function search(mode: "down" | "up"): { paths: string[][]; capped: boolean } {
         const results: string[][] = [];
-        const budget = { explored: 0 };
-        const visited = new Set<string>([src.id]);
-        const path: string[] = [src.id];
+        let explored = 0;
+        let frontier: string[][] = [[src.id]]; // partial simple paths, all currently the same length
 
-        function dfs(current: string, depthSoFar: number) {
-          if (results.length >= cap || budget.explored >= EXPLORATION_BUDGET) return;
-          budget.explored++;
-          if (depthSoFar >= depth) return;
-          const neighbors = mode === "down" ? customersOf(graph, current) : suppliersOf(graph, current);
-          for (const next of neighbors) {
-            if (results.length >= cap || budget.explored >= EXPLORATION_BUDGET) return;
-            if (next === dst.id) {
-              results.push([...path, next]);
-              continue;
+        for (let d = 1; d <= depth; d++) {
+          const nextFrontier: string[][] = [];
+          for (const path of frontier) {
+            if (results.length >= cap || explored >= EXPLORATION_BUDGET) break;
+            const current = path[path.length - 1];
+            const neighbors = mode === "down" ? customersOf(graph, current) : suppliersOf(graph, current);
+            for (const next of neighbors) {
+              if (results.length >= cap || explored >= EXPLORATION_BUDGET) break;
+              explored++;
+              if (next === dst.id) {
+                results.push([...path, next]);
+                continue;
+              }
+              if (path.includes(next)) continue; // keep paths simple (no revisits)
+              nextFrontier.push([...path, next]);
             }
-            if (visited.has(next)) continue;
-            visited.add(next);
-            path.push(next);
-            dfs(next, depthSoFar + 1);
-            path.pop();
-            visited.delete(next);
           }
+          if (results.length >= cap || explored >= EXPLORATION_BUDGET) {
+            frontier = [];
+            break;
+          }
+          frontier = nextFrontier;
+          if (frontier.length === 0) break;
         }
-        dfs(src.id, 0);
-        return { paths: results, capped: budget.explored >= EXPLORATION_BUDGET || results.length >= cap };
+
+        return { paths: results, capped: explored >= EXPLORATION_BUDGET || results.length >= cap };
       }
 
       const found: Array<{ ids: string[]; edgeDirection: "downstream" | "upstream" }> = [];
@@ -269,13 +282,17 @@ export const registerGraphTools: ToolRegistrar = (server, ctx) => {
       const companies = await getCompanies();
       const graph = buildGraph(companies);
       const byId = graph.byId;
+      const byTicker = buildTickerMap(companies);
 
       let removedIds: Set<string>;
       let criterion: "company" | "country" | "segment";
       let criterionValue: string;
 
       if (company_id) {
-        const c = findCompany(graph, company_id);
+        // Resolve id/name/ticker the same way find_paths_between does — a
+        // caller who passes a ticker (e.g. "TSM") used to silently miss here
+        // even though the same input works for find_paths_between.
+        const c = resolveCompany(graph, byTicker, company_id);
         if (!c) {
           return errorResult(`No company found for "${company_id}".`, {
             hint: "Use search_companies to find a valid id, name, or ticker.",
