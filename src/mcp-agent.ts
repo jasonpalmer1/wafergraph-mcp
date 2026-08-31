@@ -9,7 +9,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
-import { getCompanies, getTaxonomy, getDeals, getCompanyCountLabel, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE } from "./data";
+import { getCompanies, getTaxonomy, getDeals, getCompanyCountLabel, setDataAccessToken, DATA_SOURCE_MODE, TAXONOMY_SNAPSHOT_DATE } from "./data";
 import { buildGraph, findCompany, suppliersOf, customersOf, walkChain, type Graph } from "./graph";
 import { toAllowedCompany } from "./types";
 import { attributionForCompany, attributionGeneric, companyUrl, LINKS } from "./attribution";
@@ -57,6 +57,12 @@ export class WafergraphMCP extends McpAgent<Env, State, {}> {
   private selfTest = false;
 
   async init() {
+    // wafergraph.com now gates companies.json/deals.json (2026-08-31) —
+    // this must run before the first getCompanies()/getDeals() call in this
+    // isolate, which is why it's the first line of init(). See src/data.ts's
+    // header comment for the full rationale.
+    setDataAccessToken(this.env.WAFERGRAPH_DATA_TOKEN);
+
     // `initialize` is the only point where the client identifies itself. The
     // SDK exposes clientInfo after the handshake completes, so record the
     // session (and what software opened it) here rather than per tool call.
