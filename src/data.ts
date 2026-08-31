@@ -35,6 +35,28 @@ const SOURCE_BASE = "https://wafergraph.com/data";
 const TTL_MS = 6 * 60 * 60 * 1000; // 6h, matches the edge cacheTtl below
 const EDGE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 
+// wafergraph.com gated companies.json/deals.json behind a Referer-or-token
+// check 2026-08-31 (a plain anonymous curl used to return the full dataset —
+// see that repo's functions/_lib/dataAccess.js for the full incident). This
+// is a server-to-server fetch with no page context, so it goes through the
+// token door: WAFERGRAPH_DATA_TOKEN must be set via `wrangler secret put
+// WAFERGRAPH_DATA_TOKEN` and match one of the values in wafergraph's
+// DATA_ACCESS_TOKENS Pages secret. Never hardcode the token here — this repo
+// is public. Missing/wrong token degrades to whatever dataAccess.js does for
+// an unauthorized request (403 JSON), which fetchJSON below surfaces as a
+// normal upstream-fetch failure (same stale-cache fallback as any other
+// outage — see getCompanies/getDeals).
+//
+// Set once per Durable Object session (WafergraphMCP.init() calls
+// setDataAccessToken(this.env.WAFERGRAPH_DATA_TOKEN) as its first line) so
+// none of the ~30 getCompanies()/getDeals() call sites across mcp-agent.ts
+// and src/tools/*.ts need to thread env through — same "cache it once,
+// module-scoped" shape this file already uses for companiesCache/dealsCache.
+let dataAccessToken: string | undefined;
+export function setDataAccessToken(token: string | undefined) {
+  dataAccessToken = token;
+}
+
 export const DATA_SOURCE_MODE = "hybrid (companies.json + deals.json live-fetch; taxonomy.json vendored snapshot)" as const;
 
 // Last-modified date of the wafergraph repo's data/taxonomy.json at the time
@@ -65,6 +87,7 @@ function isFresh<T>(entry: CacheEntry<T> | null): entry is CacheEntry<T> {
 
 async function fetchJSON<T>(filename: string): Promise<T> {
   const res = await fetch(`${SOURCE_BASE}/${filename}`, {
+    headers: dataAccessToken ? { Authorization: `Bearer ${dataAccessToken}` } : undefined,
     cf: {
       // Only cache genuine 200 JSON responses at the edge. Blindly caching
       // "everything" (the previous cacheEverything:true) would also cache a
